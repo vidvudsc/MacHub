@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="180" y1="120" x2="850" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1B82FF"/>
+      <stop offset="1" stop-color="#0AAE84"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="34" stdDeviation="32" flood-color="#001A25" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="#101216"/>
+  <rect x="88" y="88" width="848" height="848" rx="186" fill="url(#bg)" filter="url(#softShadow)"/>
+  <path d="M268 660V376c0-47 38-85 85-85h318c47 0 85 38 85 85v284c0 47-38 85-85 85H353c-47 0-85-38-85-85Z" fill="none" stroke="white" stroke-width="62" stroke-linejoin="round"/>
+  <path d="M756 466h42c23 0 42 19 42 42v38c0 23-19 42-42 42h-42" fill="none" stroke="white" stroke-width="54" stroke-linecap="round"/>
+  <path d="M374 621 444 480l78 93 70-160 66 112" fill="none" stroke="#101216" stroke-width="58" stroke-linecap="round" stroke-linejoin="round" opacity="0.32"/>
+  <path d="M374 608 444 467l78 93 70-160 66 112" fill="none" stroke="white" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
