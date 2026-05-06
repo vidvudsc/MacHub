@@ -4,55 +4,49 @@ struct StorageView: View {
   @ObservedObject var store: DashboardStore
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      header
+    VStack(alignment: .leading, spacing: 14) {
+      UtilityPanel {
+        HStack {
+          PanelHeader(
+            title: "Storage scan",
+            detail: store.isScanningFolders || store.isScanningCurrentFolder
+              ? (store.isScanningFolders ? "Scanning starting points..." : "Scanning current folder...")
+              : "Drill into folders and clean only what you recognize."
+          )
+          if store.isScanningFolders || store.isScanningCurrentFolder {
+            ProgressView()
+              .controlSize(.small)
+          }
+          Spacer()
+          Button {
+            PrivacySettingsService.openFullDiskAccess()
+          } label: {
+            Label("Disk Access", systemImage: "lock.open")
+          }
+          Button {
+            Task { await store.refreshFolders() }
+          } label: {
+            Label("Scan Roots", systemImage: "arrow.clockwise")
+          }
+          .disabled(store.isScanningFolders)
+        }
+      }
 
-      HStack(alignment: .top, spacing: 16) {
-        rootsList
-          .frame(minWidth: 300, maxWidth: 360)
+      HStack(alignment: .top, spacing: 14) {
+        UtilityPanel {
+          PanelHeader(title: "Starting points")
+          Divider()
+          ForEach(store.folders) { folder in
+            RootFolderRow(
+              folder: folder,
+              isSelected: store.currentFolder?.id == folder.id || store.folderPath.first?.id == folder.id,
+              action: { store.openRoot(folder) }
+            )
+          }
+        }
+        .frame(width: 330)
 
         FolderExplorer(store: store)
-      }
-    }
-  }
-
-  private var header: some View {
-    HStack {
-      Text("Storage scan")
-        .font(.title3.weight(.semibold))
-      if store.isScanningFolders || store.isScanningCurrentFolder {
-        ProgressView()
-          .controlSize(.small)
-        Text(store.isScanningFolders ? "Scanning roots..." : "Scanning folder...")
-          .foregroundStyle(.secondary)
-      }
-      Spacer()
-      Button {
-        PrivacySettingsService.openFullDiskAccess()
-      } label: {
-        Label("Disk Access", systemImage: "lock.open")
-      }
-      Button {
-        Task { await store.refreshFolders() }
-      } label: {
-        Label("Scan Roots", systemImage: "arrow.clockwise")
-      }
-      .disabled(store.isScanningFolders)
-    }
-  }
-
-  private var rootsList: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      Text("Starting points")
-        .font(.headline)
-      ForEach(store.folders) { folder in
-        FolderRow(
-          folder: folder,
-          isSelected: store.currentFolder?.id == folder.id || store.folderPath.first?.id == folder.id,
-          subtitle: folder.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
-        ) {
-          store.openRoot(folder)
-        }
       }
     }
   }
@@ -62,23 +56,12 @@ private struct FolderExplorer: View {
   @ObservedObject var store: DashboardStore
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    UtilityPanel {
       if let folder = store.currentFolder {
         explorerHeader(folder)
-
-        HStack(alignment: .top, spacing: 14) {
-          MetricCard(
-            title: folder.isDirectory ? "Current folder" : "Selected item",
-            value: Formatters.bytes(folder.bytes),
-            detail: "\(folder.children.count) direct items loaded",
-            systemImage: folder.isDirectory ? "folder" : "doc",
-            progress: nil
-          )
-          .frame(maxWidth: 340)
-
-          cleanupHints(folder)
-        }
-
+        Divider()
+        folderSummary(folder)
+        Divider()
         childrenList(folder)
       } else {
         ContentUnavailableView(
@@ -86,14 +69,16 @@ private struct FolderExplorer: View {
           systemImage: "folder.badge.questionmark",
           description: Text("Scan roots or select a folder to inspect storage.")
         )
+        .frame(maxWidth: .infinity, minHeight: 360)
       }
     }
-    .frame(maxWidth: .infinity, alignment: .topLeading)
   }
 
   private func explorerHeader(_ folder: FolderUsage) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
+        PanelHeader(title: folder.name, detail: folder.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+        Spacer()
         Button {
           Task { await store.goUp() }
         } label: {
@@ -107,8 +92,6 @@ private struct FolderExplorer: View {
           Label("Rescan", systemImage: "arrow.clockwise")
         }
         .disabled(store.isScanningCurrentFolder)
-
-        Spacer()
 
         Button {
           store.open(folder)
@@ -129,36 +112,32 @@ private struct FolderExplorer: View {
             Button {
               Task { await store.jumpToPathItem(crumb) }
             } label: {
-              Label(crumb.name, systemImage: "folder")
+              Text(crumb.name)
+                .lineLimit(1)
             }
             .buttonStyle(.bordered)
           }
         }
       }
-
-      Text(folder.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
     }
   }
 
-  private func cleanupHints(_ folder: FolderUsage) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("Clean safely")
-        .font(.headline)
-      Text("Use Trash for files you recognize. For app, cache, and developer folders, reveal first and verify before removing.")
+  private func folderSummary(_ folder: FolderUsage) -> some View {
+    HStack(spacing: 16) {
+      CompactMetricRow(
+        title: folder.isDirectory ? "Current folder" : "Selected item",
+        value: Formatters.bytes(folder.bytes),
+        systemImage: folder.isDirectory ? "folder" : "doc"
+      )
+      Text("\(folder.children.count) direct items loaded")
         .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      Spacer()
       Button(role: .destructive) {
         store.moveToTrash(folder)
       } label: {
         Label("Move Current to Trash", systemImage: "trash")
       }
     }
-    .padding(16)
-    .frame(maxWidth: .infinity, alignment: .topLeading)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
   }
 
   private func childrenList(_ folder: FolderUsage) -> some View {
@@ -172,54 +151,39 @@ private struct FolderExplorer: View {
       }
 
       ForEach(folder.sortedChildren) { child in
-        HStack(spacing: 10) {
-          Image(systemName: child.isDirectory ? "folder" : "doc")
-            .foregroundStyle(.secondary)
-            .frame(width: 20)
-          VStack(alignment: .leading, spacing: 2) {
-            Text(child.name)
-              .lineLimit(1)
-            Text(child.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
-          }
-          Spacer()
-          Text(Formatters.bytes(child.bytes))
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
+        UtilityListRow(
+          systemImage: child.isDirectory ? "folder" : "doc",
+          title: child.name,
+          detail: child.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"),
+          value: Formatters.bytes(child.bytes)
+        ) {
           Button {
             Task { await store.drillInto(child) }
           } label: {
             Label(child.isDirectory ? "Dive In" : "Open", systemImage: child.isDirectory ? "chevron.right" : "arrow.up.right.square")
           }
           .disabled(store.isScanningCurrentFolder)
+
           Button {
             store.reveal(child)
           } label: {
             Label("Reveal", systemImage: "magnifyingglass")
           }
-          .labelStyle(.iconOnly)
-          .help("Reveal in Finder")
+
           Button(role: .destructive) {
             store.moveToTrash(child)
           } label: {
             Label("Trash", systemImage: "trash")
           }
-          .labelStyle(.iconOnly)
-          .help("Move to Trash")
         }
-        .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
       }
     }
   }
 }
 
-private struct FolderRow: View {
+private struct RootFolderRow: View {
   let folder: FolderUsage
   let isSelected: Bool
-  let subtitle: String
   let action: () -> Void
 
   var body: some View {
@@ -231,23 +195,22 @@ private struct FolderRow: View {
         VStack(alignment: .leading, spacing: 3) {
           Text(folder.name)
             .lineLimit(1)
-          Text(subtitle)
+          Text(folder.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
         }
         Spacer()
         Text(Formatters.bytes(folder.bytes))
+          .font(.callout.monospacedDigit())
           .foregroundStyle(.secondary)
-          .monospacedDigit()
       }
-      .padding(12)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+      .padding(10)
+      .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
       .overlay {
         if isSelected {
           RoundedRectangle(cornerRadius: 8)
-            .fill(.selection.opacity(0.22))
+            .stroke(MacHubTheme.blue.opacity(0.65), lineWidth: 1)
         }
       }
     }

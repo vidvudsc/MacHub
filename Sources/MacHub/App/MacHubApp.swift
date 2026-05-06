@@ -3,7 +3,24 @@ import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
+    NSApp.setActivationPolicy(.regular)
+    if let frontmost = NSWorkspace.shared.frontmostApplication {
+      WindowManagerService.noteActivatedApplication(frontmost)
+    }
+    NSWorkspace.shared.notificationCenter.addObserver(
+      self,
+      selector: #selector(applicationActivated(_:)),
+      name: NSWorkspace.didActivateApplicationNotification,
+      object: nil
+    )
     HotKeyManager.shared.registerWindowHotKeys()
+  }
+
+  @objc private func applicationActivated(_ notification: Notification) {
+    guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+      return
+    }
+    WindowManagerService.noteActivatedApplication(app)
   }
 }
 
@@ -21,6 +38,7 @@ struct MacHubApp: App {
           await store.start()
         }
     }
+    .windowStyle(.hiddenTitleBar)
     .commands {
       CommandGroup(replacing: .newItem) { }
       CommandMenu("MacHub") {

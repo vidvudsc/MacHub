@@ -19,6 +19,7 @@ final class DashboardStore: ObservableObject {
   private let metricsService = SystemMetricsService()
   private let scanner = FolderScanner()
   private var timer: Timer?
+  private let refreshInterval: TimeInterval = 3
   private var didStart = false
 
   var menuBarSystemImage: String {
@@ -41,11 +42,12 @@ final class DashboardStore: ObservableObject {
 
   func startAutoRefresh() {
     guard timer == nil else { return }
-    timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+    timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
       Task { @MainActor in
         await self?.refreshMetrics()
       }
     }
+    timer?.tolerance = 0.6
   }
 
   func start() async {

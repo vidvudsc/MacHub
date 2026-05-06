@@ -13,12 +13,12 @@ struct ContentView: View {
     VStack(spacing: 0) {
       TopBar(section: Binding(get: { section }, set: { section = $0 }), store: store)
 
-      Divider()
+      Rectangle()
+        .fill(MacHubTheme.stroke)
+        .frame(height: 1)
 
       ScrollView {
-        VStack(alignment: .leading, spacing: 22) {
-          HeaderView(section: section, store: store)
-
+        VStack(alignment: .leading, spacing: 14) {
           switch section {
           case .overview:
             OverviewView(store: store)
@@ -32,11 +32,14 @@ struct ContentView: View {
             WindowToolsView()
           }
         }
-        .padding(24)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .background(.background)
     }
+    .buttonStyle(HubButtonStyle())
+    .foregroundStyle(.primary)
+    .background(MacHubTheme.windowBackground)
+    .preferredColorScheme(.dark)
   }
 }
 
@@ -45,24 +48,23 @@ private struct TopBar: View {
   @ObservedObject var store: DashboardStore
 
   var body: some View {
-    HStack(spacing: 16) {
-      HStack(spacing: 9) {
-        Image(systemName: "sparkles.rectangle.stack")
-          .font(.title3)
-          .foregroundStyle(.blue)
+    HStack(spacing: 14) {
+      HStack(spacing: 8) {
         Text("MacHub")
           .font(.headline)
+          .lineLimit(1)
       }
+      .padding(.leading, 60)
 
       Picker("Section", selection: $section) {
         ForEach(DashboardSection.allCases) { section in
-          Label(section.rawValue, systemImage: section.systemImage)
+          Text(section.rawValue)
             .tag(section)
         }
       }
       .pickerStyle(.segmented)
       .labelsHidden()
-      .frame(maxWidth: 560)
+      .frame(width: 420)
 
       Spacer()
 
@@ -84,43 +86,8 @@ private struct TopBar: View {
       }
       .disabled(store.isRefreshing)
     }
-    .padding(.horizontal, 20)
-    .padding(.vertical, 14)
-  }
-}
-
-private struct HeaderView: View {
-  let section: DashboardSection
-  @ObservedObject var store: DashboardStore
-
-  var body: some View {
-    HStack(alignment: .top) {
-      VStack(alignment: .leading, spacing: 6) {
-        Text(section.rawValue)
-          .font(.system(size: 30, weight: .semibold, design: .rounded))
-        Text(subtitle)
-          .foregroundStyle(.secondary)
-      }
-      Spacer()
-      Text(store.lastUpdated.map { "Updated \($0.formatted(date: .omitted, time: .shortened))" } ?? "Starting up")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .monospacedDigit()
-    }
-  }
-
-  private var subtitle: String {
-    switch section {
-    case .overview:
-      "Live CPU, memory, network, disk, and quick system health."
-    case .clean:
-      "Find junk, review it, and move only what you choose to Trash."
-    case .storage:
-      "Drill into folders to see what is actually taking space."
-    case .battery:
-      "Charge, health, signed watts, voltage, current, and time estimates."
-    case .windows:
-      "Resize the frontmost window with one click."
-    }
+    .padding(.trailing, 12)
+    .padding(.vertical, 10)
+    .background(Color.white.opacity(0.035))
   }
 }

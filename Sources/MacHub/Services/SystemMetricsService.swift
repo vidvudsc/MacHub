@@ -18,6 +18,11 @@ final class SystemMetricsService {
     let networkRates = await networkRates()
     let diskRate = await diskRate()
     let processCount = await countProcesses()
+    let batteryInfo = await battery
+    let topPowerApp = await topPowerHungryApp(
+      systemWatts: batteryInfo.watts.map(abs),
+      systemCPUUsage: cpu
+    )
 
     return await SystemSnapshot(
       cpuUsage: cpu,
@@ -31,8 +36,9 @@ final class SystemMetricsService {
       networkInPerSecond: networkRates.received,
       networkOutPerSecond: networkRates.sent,
       diskBytesPerSecond: diskRate,
-      battery: battery,
+      battery: batteryInfo,
       gpu: gpu,
+      topPowerApp: topPowerApp,
       uptime: ProcessInfo.processInfo.systemUptime,
       processCount: processCount
     )
@@ -246,6 +252,63 @@ final class SystemMetricsService {
   private func countProcesses() async -> Int {
     guard let output = try? await ProcessRunner.run("/bin/ps", ["-axo", "pid="], timeout: 2) else { return 0 }
     return output.split(separator: "\n").count
+  }
+
+  private func topPowerHungryApp(systemWatts: Double?, systemCPUUsage: Double) async -> PowerAppInfo? {
+    guard let output = try? await ProcessRunner.run("/bin/ps", ["-axo", "pid=,pcpu=,command=", "-r"], timeout: 2) else {
+      return nil
+    }
+
+    var cpuByApp: [String: Double] = [:]
+    for line in output.split(separator: "\n").prefix(40) {
+      guard let sample = processPowerSample(from: String(line)) else { continue }
+      cpuByApp[sample.name, default: 0] += sample.cpuPercent
+    }
+
+    guard let top = cpuByApp.max(by: { $0.value < $1.value }), top.value > 0.2 else {
+      return nil
+    }
+
+    let estimatedWatts: Double?
+    if let systemWatts, systemWatts > 0.1 {
+      let activeCPUPercent = max(systemCPUUsage * 100, top.value)
+      estimatedWatts = min(systemWatts, systemWatts * min(top.value / activeCPUPercent, 1))
+    } else {
+      estimatedWatts = nil
+    }
+
+    return PowerAppInfo(name: top.key, cpuPercent: top.value, estimatedWatts: estimatedWatts)
+  }
+
+  private func processPowerSample(from line: String) -> (name: String, cpuPercent: Double)? {
+    let pattern = #"^\s*\d+\s+([0-9.]+)\s+(.+)$"#
+    guard
+      let regex = try? NSRegularExpression(pattern: pattern),
+      let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..<line.endIndex, in: line)),
+      let cpuRange = Range(match.range(at: 1), in: line),
+      let commandRange = Range(match.range(at: 2), in: line),
+      let cpuPercent = Double(line[cpuRange])
+    else {
+      return nil
+    }
+
+    let command = String(line[commandRange])
+    let name = appName(from: command)
+    guard !name.isEmpty, name != "MacHub" else { return nil }
+    return (name, cpuPercent)
+  }
+
+  private func appName(from command: String) -> String {
+    if let range = command.range(of: #"/([^/]+)\.app/Contents/"#, options: .regularExpression) {
+      let component = String(command[range])
+      return component
+        .split(separator: "/")
+        .first(where: { $0.hasSuffix(".app") })?
+        .replacingOccurrences(of: ".app", with: "") ?? "Unknown"
+    }
+
+    let firstToken = command.split(separator: " ").first.map(String.init) ?? command
+    return URL(fileURLWithPath: firstToken).lastPathComponent
   }
 
   private func number(_ value: Any?) -> NSNumber {

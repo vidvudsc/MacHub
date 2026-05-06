@@ -2,6 +2,7 @@ import AppKit
 
 enum AppVisibilityService {
   static func showDashboard() {
+    NSApp.setActivationPolicy(.regular)
     NSApp.unhide(nil)
     NSApp.activate(ignoringOtherApps: true)
   }
@@ -10,5 +11,6 @@ enum AppVisibilityService {
     for window in NSApp.windows {
       window.orderOut(nil)
     }
+    NSApp.setActivationPolicy(.accessory)
   }
 }

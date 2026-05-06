@@ -8,14 +8,52 @@ struct BatteryView: View {
   }
 
   var body: some View {
+    HStack(alignment: .top, spacing: 14) {
+      UtilityPanel {
+        BatteryFactsCard(battery: battery)
+      }
+      .frame(width: 300)
+
+      UtilityPanel {
+        BatteryTrendCard(store: store)
+      }
+      .frame(maxWidth: 520)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct BatteryFactsCard: View {
+  let battery: BatteryInfo
+
+  var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      BatteryInspectorCard(store: store)
-        .frame(width: 500)
+      HStack(alignment: .firstTextBaseline) {
+        Text("Battery")
+          .font(.headline)
+        Spacer()
+        Text(battery.isPresent ? Formatters.percent(battery.percent) : "No battery")
+          .font(.headline.monospacedDigit())
+      }
+
+      Divider()
+
+      VStack(spacing: 12) {
+        InfoRow("Time Left", Formatters.batteryTime(battery), systemImage: "timer")
+        InfoRow("Mode", battery.isPluggedIn ? "Plugged In" : "On Battery", systemImage: "powerplug")
+        InfoRow("Power Source", battery.isPluggedIn ? "Adapter" : "Battery", systemImage: "battery.75percent")
+        InfoRow("Battery Power", Formatters.watts(battery.watts), systemImage: "bolt")
+        InfoRow("Voltage", Formatters.volts(battery.voltage), systemImage: "waveform.path.ecg")
+        InfoRow("Current", Formatters.amps(battery.amperage), systemImage: "plusminus")
+        InfoRow("Temperature", Formatters.celsius(battery.temperature), systemImage: "thermometer.medium")
+        InfoRow("Health", battery.health ?? "Unknown", systemImage: "heart")
+        InfoRow("Cycles", battery.cycleCount.map(String.init) ?? "Unavailable", systemImage: "clock.arrow.circlepath")
+      }
     }
   }
 }
 
-private struct BatteryInspectorCard: View {
+private struct BatteryTrendCard: View {
   @ObservedObject var store: DashboardStore
 
   private var battery: BatteryInfo {
@@ -23,39 +61,10 @@ private struct BatteryInspectorCard: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      HStack(alignment: .firstTextBaseline) {
-        Text("Battery")
-          .font(.title2.weight(.semibold))
-        Spacer()
-        Text(battery.isPresent ? Formatters.percent(battery.percent) : "No battery")
-          .font(.title2.weight(.semibold))
-          .monospacedDigit()
-      }
-
-      VStack(spacing: 10) {
-        InfoRow("Time Left", Formatters.minutes(battery.timeRemainingMinutes))
-        InfoRow("Mode", battery.isPluggedIn ? "Charger connected" : "Charger not connected")
-      }
-
-      Divider()
-
-      VStack(spacing: 10) {
-        InfoRow("Power Source", battery.isPluggedIn ? "Power Adapter" : "Battery Power")
-        InfoRow("Battery Power", Formatters.watts(battery.watts))
-        InfoRow("Voltage", Formatters.volts(battery.voltage))
-        InfoRow("Current", Formatters.amps(battery.amperage))
-        InfoRow("Temperature", Formatters.celsius(battery.temperature))
-        InfoRow("Health", battery.health ?? "Unknown")
-        InfoRow("Cycles", battery.cycleCount.map(String.init) ?? "Unavailable")
-      }
-
-      Divider()
-
+    VStack(alignment: .leading, spacing: 16) {
       VStack(alignment: .leading, spacing: 10) {
         Text("Recent charge")
           .font(.headline)
-          .foregroundStyle(.secondary)
         BatteryLineChart(samples: store.batteryHistory)
           .frame(height: 160)
       }
@@ -63,42 +72,93 @@ private struct BatteryInspectorCard: View {
       Divider()
 
       VStack(alignment: .leading, spacing: 12) {
-        Text("Power distribution")
+        Text("Power flow")
           .font(.headline)
+
+        PowerFlowPills(battery: battery)
+
+        Text(powerFlowDetail)
+          .font(.callout)
           .foregroundStyle(.secondary)
 
-        HStack(spacing: 14) {
-          PowerPill(systemImage: "battery.75percent", value: Formatters.watts(battery.watts))
-          Image(systemName: "arrow.right")
-            .font(.title3)
-            .foregroundStyle(.secondary)
-          PowerPill(systemImage: "laptopcomputer", value: Formatters.watts(battery.watts.map(abs)))
+        if let topPowerApp = store.snapshot.topPowerApp {
+          PowerAppRow(app: topPowerApp)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
-    .padding(18)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+  }
+
+  private var powerFlowDetail: String {
+    guard battery.isPresent else { return "No battery power data is available." }
+    guard let watts = battery.watts else {
+      return battery.isPluggedIn ? "Connected to charger; battery flow is still measuring." : "Running on battery; watt draw is still measuring."
+    }
+    if watts > 0.1 {
+      return battery.isCharging ? "Watts are flowing into the battery from the charger." : "Adapter power is connected and battery flow is positive."
+    }
+    if watts < -0.1 {
+      return battery.isPluggedIn ? "The Mac is using charger power and supplementing from the battery." : "Watts are flowing out of the battery."
+    }
+    return battery.isPluggedIn ? "Connected to charger with the battery mostly idle." : "Battery flow is near idle."
+  }
+}
+
+private struct PowerAppRow: View {
+  let app: PowerAppInfo
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "bolt.fill")
+        .foregroundStyle(MacHubTheme.yellow)
+        .frame(width: 18)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Top power app")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Text(app.name)
+          .font(.callout.weight(.semibold))
+          .lineLimit(1)
+      }
+      Spacer()
+      VStack(alignment: .trailing, spacing: 2) {
+        Text(Formatters.estimatedWatts(app.estimatedWatts))
+          .font(.headline.monospacedDigit())
+        Text(String(format: "%.0f%% CPU", app.cpuPercent))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(12)
+    .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .stroke(MacHubTheme.stroke, lineWidth: 1)
+    }
   }
 }
 
 private struct InfoRow: View {
   let title: String
   let value: String
+  let systemImage: String
 
-  init(_ title: String, _ value: String) {
+  init(_ title: String, _ value: String, systemImage: String) {
     self.title = title
     self.value = value
+    self.systemImage = systemImage
   }
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline) {
+    HStack(alignment: .firstTextBaseline, spacing: 10) {
+      Image(systemName: systemImage)
+        .foregroundStyle(.secondary)
+        .frame(width: 18)
       Text(title)
-        .font(.headline)
+        .font(.callout)
         .foregroundStyle(.secondary)
       Spacer()
       Text(value)
-        .font(.headline)
+        .font(.callout.weight(.semibold))
         .multilineTextAlignment(.trailing)
         .monospacedDigit()
     }
@@ -119,7 +179,11 @@ private struct PowerPill: View {
     .foregroundStyle(.secondary)
     .padding(.horizontal, 18)
     .padding(.vertical, 10)
-    .background(.quaternary, in: Capsule())
+    .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .stroke(MacHubTheme.stroke, lineWidth: 1)
+    }
   }
 }
 

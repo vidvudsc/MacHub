@@ -14,6 +14,7 @@ struct SystemSnapshot: Equatable {
   var diskBytesPerSecond: UInt64 = 0
   var battery: BatteryInfo = .empty
   var gpu: GPUInfo = .empty
+  var topPowerApp: PowerAppInfo?
   var uptime: TimeInterval = 0
   var processCount: Int = 0
 
@@ -43,6 +44,12 @@ struct BatterySample: Identifiable, Equatable {
   var date = Date()
   var percent: Double
   var watts: Double?
+}
+
+struct PowerAppInfo: Equatable {
+  var name: String
+  var cpuPercent: Double
+  var estimatedWatts: Double?
 }
 
 struct BatteryInfo: Equatable {

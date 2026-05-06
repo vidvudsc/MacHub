@@ -43,6 +43,16 @@ enum Formatters {
     return String(format: "%+.1f W", value)
   }
 
+  static func absoluteWatts(_ value: Double?) -> String {
+    guard let value else { return "Unavailable" }
+    return String(format: "%.1f W", abs(value))
+  }
+
+  static func estimatedWatts(_ value: Double?) -> String {
+    guard let value else { return "Estimating" }
+    return String(format: "~%.1f W", abs(value))
+  }
+
   static func volts(_ value: Double?) -> String {
     guard let value else { return "Unavailable" }
     return String(format: "%.2f V", value)
@@ -69,5 +79,21 @@ enum Formatters {
     guard let minutes else { return "Calculating" }
     if minutes >= 60 { return "\(minutes / 60)h \(minutes % 60)m" }
     return "\(minutes)m"
+  }
+
+  static func batteryTime(_ battery: BatteryInfo) -> String {
+    guard battery.isPresent else { return "No battery" }
+    guard let minutes = battery.timeRemainingMinutes else {
+      return battery.isPluggedIn ? "Plugged in" : "Calculating"
+    }
+
+    let duration = Self.minutes(minutes)
+    if battery.isCharging {
+      return "\(duration) to full"
+    }
+    if battery.isPluggedIn {
+      return "Charged"
+    }
+    return "\(duration) remaining"
   }
 }

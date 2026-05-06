@@ -1,5 +1,6 @@
 import ApplicationServices
 import AppKit
+import Carbon
 import Foundation
 
 enum WindowLayout: String, CaseIterable, Identifiable {
@@ -23,15 +24,55 @@ enum WindowLayout: String, CaseIterable, Identifiable {
     }
   }
 
-  var shortcutLabel: String {
+  var defaultShortcut: WindowShortcut {
     switch self {
-    case .leftHalf: "⌘⇧←"
-    case .rightHalf: "⌘⇧→"
-    case .topHalf: "⌘⇧↑"
-    case .bottomHalf: "⌘⇧↓"
-    case .maximize: "⌘⇧M"
-    case .center: "⌘⇧C"
+    case .leftHalf: WindowShortcut(keyCode: 123, modifiers: UInt32(cmdKey | shiftKey), displayLabel: "⌘⇧←")
+    case .rightHalf: WindowShortcut(keyCode: 124, modifiers: UInt32(cmdKey | shiftKey), displayLabel: "⌘⇧→")
+    case .topHalf: WindowShortcut(keyCode: 126, modifiers: UInt32(cmdKey | shiftKey), displayLabel: "⌘⇧↑")
+    case .bottomHalf: WindowShortcut(keyCode: 125, modifiers: UInt32(cmdKey | shiftKey), displayLabel: "⌘⇧↓")
+    case .maximize: WindowShortcut(keyCode: 46, modifiers: UInt32(cmdKey | shiftKey), displayLabel: "⌘⇧M")
+    case .center: WindowShortcut(keyCode: 8, modifiers: UInt32(cmdKey | shiftKey), displayLabel: "⌘⇧C")
     }
+  }
+
+  var shortcutLabel: String {
+    WindowShortcutStore.shared.shortcut(for: self).displayLabel
+  }
+}
+
+struct WindowShortcut: Codable, Equatable {
+  var keyCode: UInt32
+  var modifiers: UInt32
+  var displayLabel: String
+}
+
+final class WindowShortcutStore {
+  static let shared = WindowShortcutStore()
+
+  private let defaults = UserDefaults.standard
+  private let prefix = "windowShortcut."
+
+  private init() { }
+
+  func shortcut(for layout: WindowLayout) -> WindowShortcut {
+    let key = prefix + layout.id
+    guard
+      let data = defaults.data(forKey: key),
+      let shortcut = try? JSONDecoder().decode(WindowShortcut.self, from: data)
+    else {
+      return layout.defaultShortcut
+    }
+    return shortcut
+  }
+
+  func setShortcut(_ shortcut: WindowShortcut, for layout: WindowLayout) {
+    let key = prefix + layout.id
+    guard let data = try? JSONEncoder().encode(shortcut) else { return }
+    defaults.set(data, forKey: key)
+  }
+
+  func resetShortcut(for layout: WindowLayout) {
+    defaults.removeObject(forKey: prefix + layout.id)
   }
 }
 
@@ -45,6 +86,13 @@ enum WindowManagerService {
 
   static var isAccessibilityTrusted: Bool {
     AXIsProcessTrusted()
+  }
+
+  private static var lastTargetApp: NSRunningApplication?
+
+  static func noteActivatedApplication(_ app: NSRunningApplication) {
+    guard app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+    lastTargetApp = app
   }
 
   static func requestAccessibilityPermission() {
@@ -64,7 +112,7 @@ enum WindowManagerService {
       throw WindowError.accessibilityPermissionMissing
     }
 
-    guard let app = NSWorkspace.shared.frontmostApplication else {
+    guard let app = targetApplication() else {
       throw WindowError.noFrontmostApplication
     }
 
@@ -87,6 +135,23 @@ enum WindowManagerService {
     let sizeStatus = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
     guard positionStatus == .success, sizeStatus == .success else {
       throw WindowError.cannotMoveWindow
+    }
+  }
+
+  private static func targetApplication() -> NSRunningApplication? {
+    let frontmost = NSWorkspace.shared.frontmostApplication
+    if frontmost?.bundleIdentifier != Bundle.main.bundleIdentifier {
+      return frontmost
+    }
+
+    if let lastTargetApp, !lastTargetApp.isTerminated {
+      return lastTargetApp
+    }
+
+    return NSWorkspace.shared.runningApplications.first { app in
+      app.activationPolicy == .regular &&
+        app.bundleIdentifier != Bundle.main.bundleIdentifier &&
+        !app.isTerminated
     }
   }
 

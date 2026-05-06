@@ -6,42 +6,38 @@ struct ActivityMonitorPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Picker("Metric", selection: $metric) {
-        ForEach(ActivityMetric.allCases) { metric in
-          Text(metric.rawValue).tag(metric)
+      HStack {
+        PanelHeader(title: "Live Activity", detail: store.lastUpdated.map { "Updated \($0.formatted(date: .omitted, time: .shortened))" } ?? "Updated just now")
+        Spacer()
+        Picker("Metric", selection: $metric) {
+          ForEach(ActivityMetric.allCases) { metric in
+            Text(metric.rawValue).tag(metric)
+          }
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 360)
       }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-      .frame(maxWidth: 520)
 
       HStack(alignment: .top, spacing: 16) {
-        ActivityBars(values: values)
-          .frame(height: 210)
+        ActivityTrendChart(values: values, metric: metric)
+          .frame(minWidth: 330, maxWidth: .infinity, minHeight: 250)
 
         VStack(alignment: .leading, spacing: 12) {
-          Text(primaryValue)
-            .font(.system(size: 28, weight: .semibold, design: .rounded))
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-
-          Text(secondaryValue)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-          Divider()
+          ActivityValueBlock(title: metric.rawValue, value: primaryValue, detail: secondaryValue, tint: tint)
 
           ForEach(detailRows, id: \.0) { row in
             LabeledContent(row.0, value: row.1)
               .font(.callout)
           }
         }
-        .frame(width: 230, alignment: .topLeading)
+        .padding(12)
+        .frame(width: 210, alignment: .topLeading)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
       }
     }
-    .padding(16)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    .padding(14)
+    .hubPanel()
   }
 
   private var values: [Double] {
@@ -116,34 +112,126 @@ struct ActivityMonitorPanel: View {
       ]
     }
   }
+
+  private var tint: Color {
+    switch metric {
+    case .cpu: MacHubTheme.green
+    case .memory: MacHubTheme.blue
+    case .network: MacHubTheme.purple
+    case .disk: MacHubTheme.yellow
+    }
+  }
 }
 
-private struct ActivityBars: View {
-  let values: [Double]
+private struct ActivityValueBlock: View {
+  let title: String
+  let value: String
+  let detail: String
+  let tint: Color
 
   var body: some View {
-    GeometryReader { proxy in
-      let barCount = max(values.count, 1)
-      let spacing: CGFloat = 3
-      let width = max((proxy.size.width - spacing * CGFloat(barCount - 1)) / CGFloat(barCount), 3)
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 8) {
+        Circle()
+          .fill(tint)
+          .frame(width: 8, height: 8)
+        Text(title)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+      }
 
-      HStack(alignment: .bottom, spacing: spacing) {
-        ForEach(Array(values.enumerated()), id: \.offset) { _, value in
-          RoundedRectangle(cornerRadius: 2)
-            .fill(.blue.gradient)
-            .frame(width: width, height: max(proxy.size.height * value, 3))
+      Text(value)
+        .font(.system(size: 28, weight: .semibold, design: .rounded))
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.68)
+
+      Text(detail)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+}
+
+private struct ActivityTrendChart: View {
+  let values: [Double]
+  let metric: ActivityMetric
+
+  var body: some View {
+    VStack(spacing: 7) {
+      HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .trailing) {
+          Text(topLabel)
+          Spacer()
+          Text(midLabel)
+          Spacer()
+          Text("0%")
+        }
+        .font(.caption2.monospacedDigit())
+        .foregroundStyle(.secondary)
+        .frame(width: 34)
+
+        GeometryReader { proxy in
+          ZStack {
+            chartGrid
+            Sparkline(values: values, tint: tint, showsFill: true)
+              .padding(.vertical, 8)
+              .padding(.trailing, 2)
+          }
         }
       }
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-      .overlay {
-        VStack {
-          Divider().opacity(0.35)
+
+      HStack {
+        Text(metric == .network || metric == .disk ? "Recent transfer rate" : "Last samples")
+        Spacer()
+        Text(metric.rawValue)
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+    }
+  }
+
+  private var chartGrid: some View {
+    VStack {
+      Rectangle().fill(MacHubTheme.hairline).frame(height: 1)
+      Spacer()
+      Rectangle().fill(MacHubTheme.hairline).frame(height: 1)
+      Spacer()
+      Rectangle().fill(MacHubTheme.hairline).frame(height: 1)
+    }
+    .overlay {
+      HStack {
+        ForEach(0..<6, id: \.self) { _ in
+          Rectangle()
+            .fill(MacHubTheme.hairline)
+            .frame(width: 1)
           Spacer()
-          Divider().opacity(0.2)
-          Spacer()
-          Divider().opacity(0.2)
         }
       }
+    }
+  }
+
+  private var topLabel: String {
+    switch metric {
+    case .network, .disk: "Max"
+    default: "100%"
+    }
+  }
+
+  private var midLabel: String {
+    switch metric {
+    case .network, .disk: "50%"
+    default: "50%"
+    }
+  }
+
+  private var tint: Color {
+    switch metric {
+    case .cpu: MacHubTheme.green
+    case .memory: MacHubTheme.blue
+    case .network: MacHubTheme.purple
+    case .disk: MacHubTheme.yellow
     }
   }
 }

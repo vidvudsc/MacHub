@@ -8,50 +8,80 @@ struct CleanerView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      HStack(alignment: .top, spacing: 14) {
-        MetricCard(
-          title: "Likely safe cleanup",
-          value: Formatters.bytes(totalCleanable),
-          detail: "Caches, logs, build artifacts, and Trash. Still review before removing.",
-          systemImage: "sparkles",
-          progress: nil
-        )
-        .frame(maxWidth: 360)
+    VStack(alignment: .leading, spacing: 14) {
+      UtilityPanel {
+        HStack(spacing: 22) {
+          VStack(alignment: .leading, spacing: 5) {
+            Text("Likely safe cleanup")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Text(Formatters.bytes(totalCleanable))
+              .font(.system(size: 28, weight: .semibold, design: .rounded).monospacedDigit())
+            Text("Selected")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
 
-        VStack(alignment: .leading, spacing: 10) {
-          Text("Cleaner rules")
-            .font(.headline)
-          Text("MacHub does not silently delete. Safe items go to Trash; review-heavy folders open in Finder so you stay in control.")
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+          Spacer()
+
           Button {
             Task { await store.refreshCleanupTargets() }
           } label: {
             Label("Rescan Junk", systemImage: "arrow.clockwise")
           }
 
+          Divider()
+            .frame(height: 52)
+
+          VStack(alignment: .leading, spacing: 5) {
+            Text("Full Disk Access")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Text("Review")
+              .font(.headline)
+              .foregroundStyle(MacHubTheme.green)
+            Text("About Full Disk Access")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+
           Button {
             PrivacySettingsService.openFullDiskAccess()
           } label: {
-            Label("Full Disk Access", systemImage: "lock.open")
+            Label("Open Settings", systemImage: "checkmark.circle")
           }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
       }
 
-      VStack(alignment: .leading, spacing: 10) {
-        Text("Cleanup targets")
-          .font(.title3.weight(.semibold))
+      UtilityPanel {
+        HStack {
+          Text("Item")
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Text("Details")
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Text("Size")
+            .frame(width: 110, alignment: .trailing)
+          Text("Safety")
+            .frame(width: 80)
+          Text("Action")
+            .frame(width: 140)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
 
         ForEach(store.cleanupTargets) { target in
           CleanupRow(target: target, store: store)
         }
 
         if store.cleanupTargets.isEmpty {
-          ContentUnavailableView("Nothing scanned yet", systemImage: "sparkles", description: Text("Run a junk scan to estimate cleanable files."))
+          ContentUnavailableView(
+            "Nothing scanned yet",
+            systemImage: "sparkles",
+            description: Text("Run a junk scan to estimate cleanable files.")
+          )
+          .frame(maxWidth: .infinity, minHeight: 180)
         }
       }
     }
@@ -63,33 +93,14 @@ private struct CleanupRow: View {
   @ObservedObject var store: DashboardStore
 
   var body: some View {
-    HStack(spacing: 12) {
-      Image(systemName: target.systemImage)
-        .font(.title3)
-        .foregroundStyle(target.isSafeToTrash ? .blue : .orange)
-        .frame(width: 28)
-
-      VStack(alignment: .leading, spacing: 3) {
-        HStack(spacing: 8) {
-          Text(target.title)
-            .font(.headline)
-          Text(target.isSafeToTrash ? "Safe-ish" : "Review")
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(target.isSafeToTrash ? .blue.opacity(0.16) : .orange.opacity(0.18), in: Capsule())
-        }
-        Text(target.detail)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-      }
-
-      Spacer()
-
-      Text(Formatters.bytes(target.bytes))
-        .font(.headline.monospacedDigit())
-        .foregroundStyle(.secondary)
-        .frame(minWidth: 110, alignment: .trailing)
+    UtilityListRow(
+      systemImage: target.systemImage,
+      title: target.title,
+      detail: target.detail,
+      value: Formatters.bytes(target.bytes),
+      tint: target.isSafeToTrash ? .blue : .orange
+    ) {
+      StatusPill(text: target.isSafeToTrash ? "Safe" : "Review", tint: target.isSafeToTrash ? MacHubTheme.green : MacHubTheme.yellow)
 
       Button {
         NSWorkspace.shared.open(target.url)
@@ -107,7 +118,5 @@ private struct CleanupRow: View {
         Label(target.isSafeToTrash ? "Trash" : "Review", systemImage: target.isSafeToTrash ? "trash" : "magnifyingglass")
       }
     }
-    .padding(14)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
   }
 }

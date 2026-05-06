@@ -10,8 +10,42 @@ final class HotKeyManager {
   private init() { }
 
   func registerWindowHotKeys() {
-    guard hotKeyRefs.isEmpty else { return }
+    installHandlerIfNeeded()
+    reloadWindowHotKeys()
+  }
 
+  func reloadWindowHotKeys() {
+    unregisterWindowHotKeys()
+
+    for layout in WindowLayout.allCases {
+      var hotKeyRef: EventHotKeyRef?
+      let shortcut = WindowShortcutStore.shared.shortcut(for: layout)
+      let hotKeyID = EventHotKeyID(signature: fourCharCode("MHub"), id: layout.hotKeyIdentifier)
+      let status = RegisterEventHotKey(
+        shortcut.keyCode,
+        shortcut.modifiers,
+        hotKeyID,
+        GetEventDispatcherTarget(),
+        0,
+        &hotKeyRef
+      )
+      if status == noErr {
+        hotKeyRefs.append(hotKeyRef)
+      }
+    }
+  }
+
+  private func unregisterWindowHotKeys() {
+    for hotKeyRef in hotKeyRefs {
+      if let hotKeyRef {
+        UnregisterEventHotKey(hotKeyRef)
+      }
+    }
+    hotKeyRefs = []
+  }
+
+  private func installHandlerIfNeeded() {
+    guard handlerRef == nil else { return }
     var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
     InstallEventHandler(
       GetEventDispatcherTarget(),
@@ -41,31 +75,6 @@ final class HotKeyManager {
       nil,
       &handlerRef
     )
-
-    for layout in WindowLayout.allCases {
-      var hotKeyRef: EventHotKeyRef?
-      let hotKeyID = EventHotKeyID(signature: fourCharCode("MHub"), id: layout.hotKeyIdentifier)
-      RegisterEventHotKey(
-        layout.keyCode,
-        UInt32(cmdKey | shiftKey),
-        hotKeyID,
-        GetEventDispatcherTarget(),
-        0,
-        &hotKeyRef
-      )
-      hotKeyRefs.append(hotKeyRef)
-
-      var fallbackRef: EventHotKeyRef?
-      RegisterEventHotKey(
-        layout.keyCode,
-        UInt32(controlKey | optionKey),
-        hotKeyID,
-        GetEventDispatcherTarget(),
-        0,
-        &fallbackRef
-      )
-      hotKeyRefs.append(fallbackRef)
-    }
   }
 
   private func fourCharCode(_ string: String) -> OSType {
@@ -97,14 +106,4 @@ extension WindowLayout {
     }
   }
 
-  fileprivate var keyCode: UInt32 {
-    switch self {
-    case .leftHalf: 123
-    case .rightHalf: 124
-    case .topHalf: 126
-    case .bottomHalf: 125
-    case .maximize: 46
-    case .center: 8
-    }
-  }
 }
