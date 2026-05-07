@@ -117,8 +117,7 @@ struct OverviewView: View {
     }
 
     if battery.isPluggedIn, let systemWatts = battery.systemWatts, systemWatts > 0.1 {
-      let batteryText = battery.isCharging && abs(watts) > 0.1 ? " · \(Formatters.absoluteWatts(watts)) to battery" : ""
-      return "\(time) · \(Formatters.absoluteWatts(systemWatts)) to Mac\(batteryText)"
+      return "\(time) · \(Formatters.absoluteWatts(systemWatts)) to Mac"
     }
     if !battery.isPluggedIn, abs(watts) > 0.1 {
       return "\(time) · \(Formatters.absoluteWatts(watts)) out"

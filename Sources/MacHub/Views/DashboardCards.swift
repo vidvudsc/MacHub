@@ -256,21 +256,33 @@ struct PowerFlowPills: View {
   var body: some View {
     VStack(spacing: compact ? 6 : 10) {
       if battery.isPluggedIn, hasAdapterPower {
-        PowerFlowLine(
-          leftIcon: "powerplug",
-          rightIcon: "laptopcomputer",
-          value: formattedWatts(systemLoadWatts),
-          compact: compact
-        )
-
-        if hasBatteryChargeFlow {
-          PowerFlowLine(
-            leftIcon: "powerplug",
-            rightIcon: battery.isCharging ? "battery.100percent.bolt" : "battery.75percent",
-            value: formattedWatts(abs(battery.watts ?? 0)),
+        HStack(spacing: compact ? 8 : 14) {
+          PowerFlowPill(
+            systemImage: "bolt.fill",
+            value: formattedWatts(battery.externalWatts),
             compact: compact
           )
+          Image(systemName: "arrow.right")
+            .font(compact ? .callout : .title3)
+            .foregroundStyle(.secondary)
+            .frame(width: compact ? 18 : 24)
+          VStack(spacing: compact ? 6 : 8) {
+            PowerFlowPill(
+              systemImage: battery.isCharging ? "battery.100percent.bolt" : "battery.75percent",
+              value: formattedWatts(batteryChargeWatts),
+              compact: compact
+            )
+            PowerFlowPill(
+              systemImage: "laptopcomputer",
+              value: formattedWatts(systemLoadWatts),
+              compact: compact
+            )
+          }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+          "Adapter \(formattedWatts(battery.externalWatts)), battery \(formattedWatts(batteryChargeWatts)), Mac \(formattedWatts(systemLoadWatts))"
+        )
       } else {
         PowerFlowLine(
           leftIcon: "battery.75percent",
@@ -287,10 +299,6 @@ struct PowerFlowPills: View {
     (battery.externalWatts ?? 0) > 0.1
   }
 
-  private var hasBatteryChargeFlow: Bool {
-    battery.isCharging && abs(battery.watts ?? 0) > 0.1
-  }
-
   private var systemLoadWatts: Double? {
     if let systemWatts = battery.systemWatts, systemWatts > 0.1 {
       return systemWatts
@@ -300,6 +308,20 @@ struct PowerFlowPills: View {
       return max(externalWatts - batteryChargeWatts, 0)
     }
     return nil
+  }
+
+  private var batteryChargeWatts: Double? {
+    if let watts = battery.watts, abs(watts) > 0.1 {
+      return abs(watts)
+    }
+    guard
+      let externalWatts = battery.externalWatts,
+      let systemLoadWatts,
+      externalWatts > systemLoadWatts
+    else {
+      return nil
+    }
+    return externalWatts - systemLoadWatts
   }
 
   private func formattedWatts(_ value: Double?) -> String {
@@ -335,6 +357,7 @@ private struct PowerFlowPill: View {
     HStack(spacing: compact ? 6 : 10) {
       Image(systemName: systemImage)
         .font(.system(size: compact ? 14 : 17, weight: .semibold))
+        .frame(width: compact ? 16 : 20, height: compact ? 16 : 20)
       Text(value)
         .font(.system(size: compact ? 14 : 18, weight: .semibold, design: .rounded).monospacedDigit())
         .lineLimit(1)
@@ -343,8 +366,7 @@ private struct PowerFlowPill: View {
     .foregroundStyle(.secondary)
     .padding(.horizontal, compact ? 10 : 18)
     .padding(.vertical, compact ? 8 : 10)
-    .frame(width: compact ? 104 : nil)
-    .frame(minWidth: compact ? nil : 118)
+    .frame(width: compact ? 108 : 136)
     .background(Color.white.opacity(0.07), in: Capsule())
   }
 }
@@ -377,12 +399,22 @@ struct Sparkline: View {
 
   private func normalizedPoints(in size: CGSize) -> [CGPoint] {
     let samples = values.isEmpty ? [0.18, 0.22, 0.2, 0.26, 0.24, 0.3, 0.28] : values
-    let minValue = samples.min() ?? 0
-    let maxValue = samples.max() ?? 1
-    let range = max(maxValue - minValue, 0.01)
-    let step = samples.count > 1 ? size.width / CGFloat(samples.count - 1) : size.width
+    let drawableSamples = samples.count == 1 ? [samples[0], samples[0]] : samples
+    let minValue = drawableSamples.min() ?? 0
+    let maxValue = drawableSamples.max() ?? 1
+    let step = drawableSamples.count > 1 ? size.width / CGFloat(drawableSamples.count - 1) : size.width
+    let rawRange = maxValue - minValue
 
-    return samples.enumerated().map { index, value in
+    if rawRange < 0.01 {
+      let y = size.height * 0.48
+      return drawableSamples.indices.map { index in
+        CGPoint(x: CGFloat(index) * step, y: y)
+      }
+    }
+
+    let range = rawRange
+
+    return drawableSamples.enumerated().map { index, value in
       let normalized = (value - minValue) / range
       return CGPoint(
         x: CGFloat(index) * step,

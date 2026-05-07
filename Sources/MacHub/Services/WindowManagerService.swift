@@ -111,12 +111,7 @@ enum WindowManagerService {
       throw WindowError.accessibilityPermissionMissing
     }
 
-    guard let app = targetApplication() else {
-      throw WindowError.noFrontmostApplication
-    }
-
-    let appElement = AXUIElementCreateApplication(app.processIdentifier)
-    guard let window = focusedWindow(in: appElement) ?? firstWindow(in: appElement) else {
+    guard let window = focusedTargetWindow() ?? fallbackTargetWindow() else {
       throw WindowError.noFocusedWindow
     }
     let frame = frame(for: layout, visibleFrame: activeScreenVisibleFrame())
@@ -130,11 +125,40 @@ enum WindowManagerService {
       throw WindowError.cannotMoveWindow(position: .failure, size: .failure)
     }
 
+    guard isAttributeSettable(kAXSizeAttribute as CFString, on: window),
+          isAttributeSettable(kAXPositionAttribute as CFString, on: window) else {
+      throw WindowError.cannotMoveWindow(position: .attributeUnsupported, size: .attributeUnsupported)
+    }
+
     let sizeStatus = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
     let positionStatus = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, originValue)
     guard positionStatus == .success, sizeStatus == .success else {
       throw WindowError.cannotMoveWindow(position: positionStatus, size: sizeStatus)
     }
+  }
+
+  private static func focusedTargetWindow() -> AXUIElement? {
+    let systemWide = AXUIElementCreateSystemWide()
+    var focusedAppValue: CFTypeRef?
+    let status = AXUIElementCopyAttributeValue(
+      systemWide,
+      kAXFocusedApplicationAttribute as CFString,
+      &focusedAppValue
+    )
+    guard status == .success, let focusedAppValue else { return nil }
+
+    let appElement = focusedAppValue as! AXUIElement
+    var pid: pid_t = 0
+    AXUIElementGetPid(appElement, &pid)
+    guard pid != ProcessInfo.processInfo.processIdentifier else { return nil }
+
+    return focusedWindow(in: appElement) ?? firstWindow(in: appElement)
+  }
+
+  private static func fallbackTargetWindow() -> AXUIElement? {
+    guard let app = targetApplication() else { return nil }
+    let appElement = AXUIElementCreateApplication(app.processIdentifier)
+    return focusedWindow(in: appElement) ?? firstWindow(in: appElement)
   }
 
   private static func targetApplication() -> NSRunningApplication? {
@@ -182,6 +206,12 @@ enum WindowManagerService {
       return nil
     }
     return first
+  }
+
+  private static func isAttributeSettable(_ attribute: CFString, on element: AXUIElement) -> Bool {
+    var settable = DarwinBoolean(false)
+    let status = AXUIElementIsAttributeSettable(element, attribute, &settable)
+    return status == .success && settable.boolValue
   }
 
   private static func activeScreenVisibleFrame() -> CGRect {

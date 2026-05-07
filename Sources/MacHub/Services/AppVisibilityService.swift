@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 
 enum AppVisibilityService {
   private static var isHidingToMenuBar = false
@@ -16,6 +17,7 @@ enum AppVisibilityService {
 
   private static func showDashboard(attempt: Int) {
     isHidingToMenuBar = false
+    transformProcess(to: ProcessApplicationTransformState(kProcessTransformToForegroundApplication))
     NSApp.setActivationPolicy(.regular)
     NSApp.unhide(nil)
     var windows = dashboardWindows()
@@ -66,12 +68,41 @@ enum AppVisibilityService {
       window.orderOut(nil)
     }
     NSApp.hide(nil)
-    NSApp.setActivationPolicy(.accessory)
 
-    DispatchQueue.main.async {
-      NSApp.setActivationPolicy(.accessory)
+    enforceMenuBarOnlyMode()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { enforceMenuBarOnlyMode() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { enforceMenuBarOnlyMode() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+      enforceMenuBarOnlyMode()
       isHidingToMenuBar = false
     }
+  }
+
+  private static func enforceMenuBarOnlyMode() {
+    for window in NSApp.windows where isDashboardWindow(window) {
+      window.orderOut(nil)
+    }
+    transformProcess(to: ProcessApplicationTransformState(kProcessTransformToUIElementApplication))
+    NSApp.setActivationPolicy(.prohibited)
+    NSApp.setActivationPolicy(.accessory)
+    NSApp.hide(nil)
+    NSRunningApplication.current.hide()
+    activateFallbackApplication()
+  }
+
+  private static func activateFallbackApplication() {
+    if let finder = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.finder" }) {
+      finder.activate()
+    } else {
+      NSWorkspace.shared.runningApplications
+        .first { $0.activationPolicy == .regular && $0.bundleIdentifier != Bundle.main.bundleIdentifier }?
+        .activate()
+    }
+  }
+
+  private static func transformProcess(to transformState: ProcessApplicationTransformState) {
+    var process = ProcessSerialNumber(highLongOfPSN: 0, lowLongOfPSN: UInt32(kCurrentProcess))
+    TransformProcessType(&process, transformState)
   }
 
   private static func dashboardWindows() -> [NSWindow] {

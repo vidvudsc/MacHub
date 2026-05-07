@@ -24,6 +24,8 @@ final class DashboardStore: ObservableObject {
   private var metricsRefreshActivity: NSObjectProtocol?
   private static let metricsRefreshIntervalNanoseconds: UInt64 = 1_500_000_000
   private static let batteryRefreshIntervalNanoseconds: UInt64 = 500_000_000
+  private static let batteryHistorySampleInterval: TimeInterval = 60
+  private static let batteryHistoryMaxSamples = 12 * 60
   private var isRefreshingMetrics = false
   private var isRefreshingBattery = false
   private var didStart = false
@@ -269,12 +271,9 @@ final class DashboardStore: ObservableObject {
   private func appendBatteryHistory(from battery: BatteryInfo) {
     guard battery.isPresent else { return }
     let now = Date()
-    if let last = batteryHistory.last, now.timeIntervalSince(last.date) < 1 {
-      batteryHistory[batteryHistory.count - 1] = BatterySample(
-        date: now,
-        percent: battery.percent,
-        watts: battery.watts
-      )
+    if let last = batteryHistory.last, now.timeIntervalSince(last.date) < Self.batteryHistorySampleInterval {
+      batteryHistory[batteryHistory.count - 1].percent = battery.percent
+      batteryHistory[batteryHistory.count - 1].watts = battery.watts
     } else {
       batteryHistory.append(BatterySample(
         date: now,
@@ -283,8 +282,8 @@ final class DashboardStore: ObservableObject {
       ))
     }
 
-    if batteryHistory.count > 360 {
-      batteryHistory.removeFirst(batteryHistory.count - 360)
+    if batteryHistory.count > Self.batteryHistoryMaxSamples {
+      batteryHistory.removeFirst(batteryHistory.count - Self.batteryHistoryMaxSamples)
     }
   }
 

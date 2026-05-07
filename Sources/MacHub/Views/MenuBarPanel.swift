@@ -38,7 +38,7 @@ struct MenuBarPanel: View {
           title: "Battery",
           value: store.snapshot.battery.isPresent ? Formatters.percent(store.snapshot.battery.percent) : "--",
           tint: MacHubTheme.green,
-          values: store.batteryHistory.suffix(28).map(\.percent)
+          values: store.batteryHistory.suffix(360).map(\.percent)
         )
         MiniMetric(
           title: "Disk",
