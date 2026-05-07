@@ -9,7 +9,9 @@ struct StorageView: View {
         HStack {
           PanelHeader(
             title: "Storage scan",
-            detail: store.isScanningFolders || store.isScanningCurrentFolder
+            detail: !store.hasFullDiskAccess
+              ? "Full Disk Access is needed before MacHub scans Downloads and other protected folders."
+              : store.isScanningFolders || store.isScanningCurrentFolder
               ? (store.isScanningFolders ? "Scanning starting points..." : "Scanning current folder...")
               : "Drill into folders and clean only what you recognize."
           )
@@ -19,16 +21,11 @@ struct StorageView: View {
           }
           Spacer()
           Button {
-            PrivacySettingsService.openFullDiskAccess()
-          } label: {
-            Label("Disk Access", systemImage: "lock.open")
-          }
-          Button {
             Task { await store.refreshFolders() }
           } label: {
             Label("Scan Roots", systemImage: "arrow.clockwise")
           }
-          .disabled(store.isScanningFolders)
+          .disabled(store.isScanningFolders || !store.hasFullDiskAccess)
         }
       }
 

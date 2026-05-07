@@ -81,7 +81,7 @@ enum WindowManagerService {
     case accessibilityPermissionMissing
     case noFrontmostApplication
     case noFocusedWindow
-    case cannotMoveWindow
+    case cannotMoveWindow(position: AXError, size: AXError)
   }
 
   static var isAccessibilityTrusted: Bool {
@@ -108,7 +108,6 @@ enum WindowManagerService {
 
   static func apply(_ layout: WindowLayout) async throws {
     guard AXIsProcessTrusted() else {
-      requestAccessibilityPermission()
       throw WindowError.accessibilityPermissionMissing
     }
 
@@ -128,13 +127,13 @@ enum WindowManagerService {
       let originValue = AXValueCreate(.cgPoint, &origin),
       let sizeValue = AXValueCreate(.cgSize, &size)
     else {
-      throw WindowError.cannotMoveWindow
+      throw WindowError.cannotMoveWindow(position: .failure, size: .failure)
     }
 
-    let positionStatus = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, originValue)
     let sizeStatus = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+    let positionStatus = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, originValue)
     guard positionStatus == .success, sizeStatus == .success else {
-      throw WindowError.cannotMoveWindow
+      throw WindowError.cannotMoveWindow(position: positionStatus, size: sizeStatus)
     }
   }
 

@@ -7,33 +7,69 @@ enum AppVisibilityService {
     guard let window, isDashboardWindow(window) else { return }
     window.isReleasedWhenClosed = false
     window.delegate = DashboardWindowDelegate.shared
+    closeDuplicateDashboardWindows(keeping: window)
   }
 
   static func showDashboard() {
+    showDashboard(attempt: 0)
+  }
+
+  private static func showDashboard(attempt: Int) {
     isHidingToMenuBar = false
     NSApp.setActivationPolicy(.regular)
     NSApp.unhide(nil)
-    for window in dashboardWindows() {
-      if window.isMiniaturized {
-        window.deminiaturize(nil)
-      }
-      window.makeKeyAndOrderFront(nil)
-      window.orderFrontRegardless()
+    var windows = dashboardWindows()
+    if windows.isEmpty {
+      NSApp.sendAction(Selector(("showMainWindow:")), to: nil, from: nil)
+      windows = dashboardWindows()
     }
+
+    guard let primary = windows.first else {
+      NSApp.activate(ignoringOtherApps: true)
+      if attempt < 5 {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+          showDashboard(attempt: attempt + 1)
+        }
+      }
+      return
+    }
+
+    closeDuplicateDashboardWindows(keeping: primary)
+    if primary.isMiniaturized {
+      primary.deminiaturize(nil)
+    }
+    primary.makeKeyAndOrderFront(nil)
+    primary.orderFrontRegardless()
     NSApp.activate(ignoringOtherApps: true)
+  }
+
+  static func closeMenuBarPanels() {
+    for window in NSApp.windows where !isDashboardWindow(window) {
+      window.orderOut(nil)
+    }
+  }
+
+  static func closeDuplicateDashboardWindows(keeping primary: NSWindow? = nil) {
+    let windows = dashboardWindows()
+    guard windows.count > 1 else { return }
+    let keeper = primary ?? windows.first
+    for window in windows where window !== keeper {
+      window.orderOut(nil)
+    }
   }
 
   static func hideToMenuBar() {
     guard !isHidingToMenuBar else { return }
     isHidingToMenuBar = true
 
-    NSApp.setActivationPolicy(.accessory)
     for window in NSApp.windows {
       window.orderOut(nil)
     }
     NSApp.hide(nil)
+    NSApp.setActivationPolicy(.accessory)
 
     DispatchQueue.main.async {
+      NSApp.setActivationPolicy(.accessory)
       isHidingToMenuBar = false
     }
   }

@@ -60,6 +60,8 @@ struct BatteryInfo: Equatable {
   var isPluggedIn = false
   var timeRemainingMinutes: Int?
   var watts: Double?
+  var externalWatts: Double?
+  var systemWatts: Double?
   var voltage: Double?
   var amperage: Double?
   var temperature: Double?

@@ -24,10 +24,45 @@ enum BatteryTelemetryParser {
     let voltage = voltageMillivolts.map { Double($0) / 1000 }
     let amperage = amperageMilliamps.map { Double($0) / 1000 }
     let watts: Double?
-    if let batteryPowerMilliwatts {
-      watts = Double(batteryPowerMilliwatts) / 1000
-    } else if let voltage, let amperage {
+    if let voltage, let amperage {
       watts = voltage * amperage
+    } else if let batteryPowerMilliwatts {
+      watts = Double(batteryPowerMilliwatts) / 1000
+    } else {
+      watts = nil
+    }
+
+    return BatteryDetails(
+      watts: watts,
+      voltage: voltage,
+      amperage: amperage,
+      temperature: temperature,
+      cycleCount: cycleCount,
+      health: condition
+    )
+  }
+
+  static func details(from properties: [String: Any]) -> BatteryDetails {
+    let voltageMillivolts = integerValue(for: "AppleRawBatteryVoltage", in: properties)
+      ?? integerValue(for: "Voltage", in: properties)
+    let amperageMilliamps = signedIntegerValue(for: "InstantAmperage", in: properties)
+      ?? signedIntegerValue(for: "Amperage", in: properties)
+    let telemetry = properties["PowerTelemetryData"] as? [String: Any]
+    let batteryPowerMilliwatts = signedIntegerValue(for: "BatteryPower", in: telemetry ?? properties)
+    let cycleCount = integerValue(for: "CycleCount", in: properties)
+    let temperature = (integerValue(for: "Temperature", in: properties)
+      ?? integerValue(for: "VirtualTemperature", in: properties))
+      .map { Double($0) / 100 }
+    let condition = properties["BatteryHealth"] as? String
+      ?? signedIntegerValue(for: "PermanentFailureStatus", in: properties).map { $0 == 0 ? "Normal" : "Service recommended" }
+
+    let voltage = voltageMillivolts.map { Double($0) / 1000 }
+    let amperage = amperageMilliamps.map { Double($0) / 1000 }
+    let watts: Double?
+    if let voltage, let amperage {
+      watts = voltage * amperage
+    } else if let batteryPowerMilliwatts {
+      watts = Double(batteryPowerMilliwatts) / 1000
     } else {
       watts = nil
     }
@@ -46,8 +81,33 @@ enum BatteryTelemetryParser {
     signedIntegerValue(for: key, in: output)
   }
 
+  private static func integerValue(for key: String, in properties: [String: Any]) -> Int? {
+    signedIntegerValue(for: key, in: properties)
+  }
+
   private static func signedIntegerValue(for key: String, in output: String) -> Int? {
     guard let raw = rawValue(for: key, in: output), !raw.isEmpty else { return nil }
+    return signedIntegerValue(from: raw)
+  }
+
+  private static func signedIntegerValue(for key: String, in properties: [String: Any]) -> Int? {
+    guard let value = properties[key] else { return nil }
+    if let number = value as? NSNumber {
+      return number.intValue
+    }
+    if let int = value as? Int {
+      return int
+    }
+    if let uint64 = value as? UInt64 {
+      return signedIntegerValue(from: String(uint64))
+    }
+    if let string = value as? String {
+      return signedIntegerValue(from: string)
+    }
+    return nil
+  }
+
+  private static func signedIntegerValue(from raw: String) -> Int? {
     if raw.hasPrefix("-") {
       return Int(raw)
     }

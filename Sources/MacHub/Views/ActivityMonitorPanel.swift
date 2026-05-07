@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ActivityMonitorPanel: View {
   @ObservedObject var store: DashboardStore
-  @State private var metric: ActivityMetric = .cpu
+  @Binding var metric: ActivityMetric
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {

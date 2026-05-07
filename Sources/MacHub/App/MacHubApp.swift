@@ -13,19 +13,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       name: NSWorkspace.didActivateApplicationNotification,
       object: nil
     )
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(dashboardWindowWillMiniaturize(_:)),
-      name: NSWindow.willMiniaturizeNotification,
-      object: nil
-    )
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(dashboardWindowWillClose(_:)),
-      name: NSWindow.willCloseNotification,
-      object: nil
-    )
     HotKeyManager.shared.registerWindowHotKeys()
+    DispatchQueue.main.async {
+      AppVisibilityService.closeDuplicateDashboardWindows()
+      AppVisibilityService.showDashboard()
+    }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -47,35 +39,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     WindowManagerService.noteActivatedApplication(app)
   }
-
-  @objc private func dashboardWindowWillMiniaturize(_ notification: Notification) {
-    guard isDashboardWindow(notification.object) else { return }
-    AppVisibilityService.hideToMenuBar()
-  }
-
-  @objc private func dashboardWindowWillClose(_ notification: Notification) {
-    guard isDashboardWindow(notification.object) else { return }
-    AppVisibilityService.hideToMenuBar()
-  }
-
-  private func isDashboardWindow(_ object: Any?) -> Bool {
-    guard let window = object as? NSWindow else { return false }
-    return window.title == "MacHub" && window.level == .normal
-  }
 }
 
 @main
 struct MacHubApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var store = DashboardStore()
-  @Environment(\.openWindow) private var openWindow
 
   var body: some Scene {
     WindowGroup("MacHub", id: "main") {
       ContentView(store: store)
         .frame(minWidth: 980, minHeight: 680)
         .task {
-          await store.start()
+          await store.startDashboard()
         }
     }
     .windowStyle(.hiddenTitleBar)
@@ -128,7 +104,6 @@ struct MacHubApp: App {
     MenuBarExtra {
       MenuBarPanel(store: store) {
         AppVisibilityService.showDashboard()
-        openWindow(id: "main")
       }
       .task {
         await store.start()

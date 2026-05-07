@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarPanel: View {
   @ObservedObject var store: DashboardStore
   let openMainWindow: () -> Void
+  @Environment(\.dismiss) private var dismiss
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -81,7 +82,13 @@ struct MenuBarPanel: View {
       }
 
       VStack(spacing: 4) {
-        MenuAction(systemImage: "macwindow", title: "Open Dashboard", action: openMainWindow)
+        MenuAction(systemImage: "macwindow", title: "Open Dashboard") {
+          dismiss()
+          AppVisibilityService.closeMenuBarPanels()
+          DispatchQueue.main.async {
+            openMainWindow()
+          }
+        }
         MenuAction(systemImage: "menubar.rectangle", title: "Hide to Menu Bar") {
           AppVisibilityService.hideToMenuBar()
         }
@@ -171,6 +178,7 @@ private struct MenuAction: View {
   let systemImage: String
   let title: String
   let action: () -> Void
+  @State private var isHovering = false
 
   var body: some View {
     Button(action: action) {
@@ -180,11 +188,18 @@ private struct MenuAction: View {
         Text(title)
         Spacer()
       }
+      .padding(.horizontal, 10)
+      .padding(.vertical, 8)
       .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        Color.white.opacity(isHovering ? 0.075 : 0.035),
+        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+      )
+      .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
     .buttonStyle(.plain)
-    .padding(.horizontal, 10)
-    .padding(.vertical, 8)
-    .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    .scaleEffect(isHovering ? 1.018 : 1)
+    .animation(.spring(response: 0.18, dampingFraction: 0.82), value: isHovering)
+    .onHover { isHovering = $0 }
   }
 }

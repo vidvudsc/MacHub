@@ -1,16 +1,23 @@
 import Darwin
 import Foundation
+import IOKit
 import IOKit.ps
+import Metal
 
 actor SystemMetricsService {
   private var previousCPU = host_cpu_load_info()
   private var previousNetworkTotals: (received: UInt64, sent: UInt64, date: Date)?
   private var previousDiskTotal: (bytes: UInt64, date: Date)?
+  private let smcPowerReader = AppleSMCPowerReader()
   private var previousPowerSamples: [Int: ProcessPowerSample] = [:]
   private var previousPowerSampleDate: Date?
   private var cachedTopPowerApp: (date: Date, app: PowerAppInfo?)?
   private var cachedBatteryDetails: (date: Date, details: BatteryDetails)?
   private var cachedGPU: GPUInfo?
+  private var cachedProcessCount = 0
+  private var isRefreshingSlowMetrics = false
+  private var lastSlowMetricsRefresh: Date?
+  private let slowMetricsInterval: TimeInterval = 10
 
   func batterySnapshot() async -> BatteryInfo {
     await batteryInfo()
@@ -18,20 +25,14 @@ actor SystemMetricsService {
 
   func snapshot() async -> SystemSnapshot {
     async let battery = batteryInfo()
-    async let gpu = gpuInfo()
 
     let cpu = cpuUsage()
     let memory = memoryUsage()
     let disk = diskUsage()
     let networkRates = await networkRates()
     let diskRate = await diskRate()
-    let processCount = await countProcesses()
     let batteryInfo = await battery
-    let gpuInfo = await gpu
-    let topPowerApp = await topPowerHungryApp(
-      systemWatts: batteryInfo.watts.map(abs),
-      systemCPUUsage: cpu
-    )
+    scheduleSlowMetricsRefresh(systemWatts: batteryInfo.systemWatts ?? batteryInfo.watts.map(abs), systemCPUUsage: cpu)
 
     return SystemSnapshot(
       cpuUsage: cpu,
@@ -46,11 +47,35 @@ actor SystemMetricsService {
       networkOutPerSecond: networkRates.sent,
       diskBytesPerSecond: diskRate,
       battery: batteryInfo,
-      gpu: gpuInfo,
-      topPowerApp: topPowerApp,
+      gpu: cachedGPU ?? .empty,
+      topPowerApp: cachedTopPowerApp?.app,
       uptime: ProcessInfo.processInfo.systemUptime,
-      processCount: processCount
+      processCount: cachedProcessCount
     )
+  }
+
+  private func scheduleSlowMetricsRefresh(systemWatts: Double?, systemCPUUsage: Double) {
+    guard !isRefreshingSlowMetrics else { return }
+    if let lastSlowMetricsRefresh, Date().timeIntervalSince(lastSlowMetricsRefresh) < slowMetricsInterval {
+      return
+    }
+
+    isRefreshingSlowMetrics = true
+    Task {
+      await refreshSlowMetrics(systemWatts: systemWatts, systemCPUUsage: systemCPUUsage)
+    }
+  }
+
+  private func refreshSlowMetrics(systemWatts: Double?, systemCPUUsage: Double) async {
+    async let gpu = gpuInfo()
+    async let processCount = countProcesses()
+    async let topPowerApp = topPowerHungryApp(systemWatts: systemWatts, systemCPUUsage: systemCPUUsage)
+
+    cachedGPU = await gpu
+    cachedProcessCount = await processCount
+    cachedTopPowerApp = (Date(), await topPowerApp)
+    lastSlowMetricsRefresh = Date()
+    isRefreshingSlowMetrics = false
   }
 
   private func cpuUsage() -> Double {
@@ -131,6 +156,7 @@ actor SystemMetricsService {
     let minutes = (description[kIOPSTimeToFullChargeKey] as? Int).flatMap { $0 > 0 ? $0 : nil }
       ?? (description[kIOPSTimeToEmptyKey] as? Int).flatMap { $0 > 0 ? $0 : nil }
     let batteryDetails = await smartBatteryDetails()
+    let livePower = try? smcPowerReader.powerDistribution()
 
     return BatteryInfo(
       percent: percent,
@@ -138,7 +164,9 @@ actor SystemMetricsService {
       isCharging: isCharging,
       isPluggedIn: pluggedIn,
       timeRemainingMinutes: minutes,
-      watts: batteryDetails.watts,
+      watts: livePower?.batteryPower ?? batteryDetails.watts,
+      externalWatts: livePower?.externalPower,
+      systemWatts: livePower?.systemPower,
       voltage: batteryDetails.voltage,
       amperage: batteryDetails.amperage,
       temperature: batteryDetails.temperature,
@@ -148,17 +176,40 @@ actor SystemMetricsService {
   }
 
   private func smartBatteryDetails() async -> BatteryDetails {
-    if let cachedBatteryDetails, Date().timeIntervalSince(cachedBatteryDetails.date) < 0.5 {
-      return cachedBatteryDetails.details
-    }
-
-    guard let output = try? await ProcessRunner.run("/usr/sbin/ioreg", ["-rn", "AppleSmartBattery"], timeout: 2) else {
+    let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+    guard service != IO_OBJECT_NULL else {
       return cachedBatteryDetails?.details ?? BatteryDetails()
     }
+    defer { IOObjectRelease(service) }
 
-    let details = BatteryTelemetryParser.details(from: output)
+    let properties: [String: Any] = [
+      "AppleRawBatteryVoltage": registryValue("AppleRawBatteryVoltage", from: service) as Any,
+      "Voltage": registryValue("Voltage", from: service) as Any,
+      "InstantAmperage": registryValue("InstantAmperage", from: service) as Any,
+      "Amperage": registryValue("Amperage", from: service) as Any,
+      "PowerTelemetryData": registryValue("PowerTelemetryData", from: service) as Any,
+      "CycleCount": registryValue("CycleCount", from: service) as Any,
+      "Temperature": registryValue("Temperature", from: service) as Any,
+      "VirtualTemperature": registryValue("VirtualTemperature", from: service) as Any,
+      "BatteryHealth": registryValue("BatteryHealth", from: service) as Any,
+      "PermanentFailureStatus": registryValue("PermanentFailureStatus", from: service) as Any
+    ].compactMapValues { value in
+      if case Optional<Any>.none = value {
+        return nil
+      }
+      return value
+    }
+
+    let details = BatteryTelemetryParser.details(from: properties)
     cachedBatteryDetails = (Date(), details)
     return details
+  }
+
+  private func registryValue(_ key: String, from service: io_service_t) -> Any? {
+    guard let value = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0) else {
+      return nil
+    }
+    return value.takeRetainedValue()
   }
 
   private func gpuInfo() async -> GPUInfo {
@@ -166,14 +217,18 @@ actor SystemMetricsService {
       return cachedGPU
     }
 
-    guard let output = try? await ProcessRunner.run("/usr/sbin/system_profiler", ["SPDisplaysDataType"], timeout: 4) else {
+    guard let device = MTLCreateSystemDefaultDevice() else {
       return .empty
     }
 
-    let name = firstValue(after: "Chipset Model:", in: output) ?? firstValue(after: "Graphics:", in: output) ?? "Unknown GPU"
-    let vram = firstValue(after: "VRAM", in: output) ?? firstValue(after: "Total Number of Cores:", in: output) ?? "Integrated"
-    let metal = firstValue(after: "Metal Support:", in: output) ?? "Unknown Metal support"
-    let gpu = GPUInfo(name: name, vram: vram, metal: metal)
+    let memory = device.recommendedMaxWorkingSetSize > 0
+      ? Formatters.memory(device.recommendedMaxWorkingSetSize)
+      : "Unified memory"
+    let gpu = GPUInfo(
+      name: device.name,
+      vram: memory,
+      metal: device.hasUnifiedMemory ? "Metal, unified memory" : "Metal, dedicated memory"
+    )
     cachedGPU = gpu
     return gpu
   }
@@ -191,20 +246,29 @@ actor SystemMetricsService {
   }
 
   private func networkTotals() async -> (received: UInt64, sent: UInt64) {
-    guard let output = try? await ProcessRunner.run("/usr/sbin/netstat", ["-ibn"], timeout: 2) else {
+    var firstAddress: UnsafeMutablePointer<ifaddrs>?
+    guard getifaddrs(&firstAddress) == 0, let firstAddress else {
       return (0, 0)
     }
+    defer { freeifaddrs(firstAddress) }
 
     var received: UInt64 = 0
     var sent: UInt64 = 0
     var countedInterfaces = Set<String>()
-
-    for line in output.split(separator: "\n").dropFirst() {
-      let parts = line.split(whereSeparator: \.isWhitespace).map(String.init)
-      guard parts.count >= 10 else { continue }
-      let name = parts[0]
+    var address = Optional(firstAddress)
+    while let current = address {
+      let interface = current.pointee
+      defer { address = interface.ifa_next }
       guard
-        parts[2].hasPrefix("<Link"),
+        let socketAddress = interface.ifa_addr,
+        Int32(socketAddress.pointee.sa_family) == AF_LINK,
+        let data = interface.ifa_data
+      else {
+        continue
+      }
+
+      let name = String(cString: interface.ifa_name)
+      guard
         !name.hasPrefix("lo"),
         !name.hasPrefix("gif"),
         !name.hasPrefix("stf"),
@@ -214,8 +278,9 @@ actor SystemMetricsService {
         continue
       }
 
-      received += UInt64(parts[6]) ?? 0
-      sent += UInt64(parts[9]) ?? 0
+      let stats = data.assumingMemoryBound(to: if_data.self).pointee
+      received += UInt64(stats.ifi_ibytes)
+      sent += UInt64(stats.ifi_obytes)
       countedInterfaces.insert(name)
     }
 
@@ -234,20 +299,59 @@ actor SystemMetricsService {
   }
 
   private func diskTransferTotal() async -> UInt64 {
-    guard let output = try? await ProcessRunner.run("/usr/sbin/iostat", ["-Id", "disk0"], timeout: 2) else {
+    guard let matching = IOServiceMatching("IOMedia") else {
+      return 0
+    }
+    CFDictionarySetValue(
+      matching,
+      Unmanaged.passUnretained("Whole" as CFString).toOpaque(),
+      Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
+    )
+
+    var iterator: io_iterator_t = 0
+    guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else {
+      return 0
+    }
+    defer { IOObjectRelease(iterator) }
+
+    var total: UInt64 = 0
+    while true {
+      let media = IOIteratorNext(iterator)
+      if media == IO_OBJECT_NULL {
+        break
+      }
+      defer { IOObjectRelease(media) }
+
+      var parent: io_registry_entry_t = 0
+      guard IORegistryEntryGetParentEntry(media, kIOServicePlane, &parent) == KERN_SUCCESS else {
+        continue
+      }
+      defer { IOObjectRelease(parent) }
+
+      guard IOObjectConformsTo(parent, "IOBlockStorageDriver") != 0 else {
+        continue
+      }
+      total += blockStorageTransferTotal(parent)
+    }
+
+    return total
+  }
+
+  private func blockStorageTransferTotal(_ driver: io_registry_entry_t) -> UInt64 {
+    var properties: Unmanaged<CFMutableDictionary>?
+    guard
+      IORegistryEntryCreateCFProperties(driver, &properties, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+      let dictionary = properties?.takeRetainedValue() as? [String: Any],
+      let statistics = dictionary["Statistics"] as? [String: Any]
+    else {
       return 0
     }
 
-    let rows = output.split(separator: "\n")
-    guard let last = rows.last else { return 0 }
-    let parts = last.split(whereSeparator: \.isWhitespace)
-    guard let megabytes = Double(parts.last ?? "0") else { return 0 }
-    return UInt64(megabytes * 1_048_576)
+    return unsignedNumber(statistics["Bytes (Read)"]) + unsignedNumber(statistics["Bytes (Write)"])
   }
 
   private func countProcesses() async -> Int {
-    guard let output = try? await ProcessRunner.run("/bin/ps", ["-axo", "pid="], timeout: 2) else { return 0 }
-    return output.split(separator: "\n").count
+    max(Int(proc_listallpids(nil, 0)), 0)
   }
 
   private func topPowerHungryApp(systemWatts: Double?, systemCPUUsage: Double) async -> PowerAppInfo? {
@@ -255,12 +359,12 @@ actor SystemMetricsService {
       return cachedTopPowerApp.app
     }
 
-    guard let output = try? await ProcessRunner.run("/bin/ps", ["-axo", "pid=,cputime=,rss=,command=", "-r"], timeout: 2) else {
+    let samples = processPowerSamples()
+    guard !samples.isEmpty else {
       return cachedTopPowerApp?.app
     }
 
     let now = Date()
-    let samples = output.split(separator: "\n").compactMap { processPowerSample(from: String($0)) }
     defer {
       previousPowerSamples = Dictionary(uniqueKeysWithValues: samples.map { ($0.pid, $0) })
       previousPowerSampleDate = now
@@ -309,67 +413,44 @@ actor SystemMetricsService {
     return app
   }
 
-  private func processPowerSample(from line: String) -> ProcessPowerSample? {
-    let pattern = #"^\s*(\d+)\s+([0-9:\.-]+)\s+(\d+)\s+(.+)$"#
-    guard
-      let regex = try? NSRegularExpression(pattern: pattern),
-      let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..<line.endIndex, in: line)),
-      let pidRange = Range(match.range(at: 1), in: line),
-      let cpuTimeRange = Range(match.range(at: 2), in: line),
-      let rssRange = Range(match.range(at: 3), in: line),
-      let commandRange = Range(match.range(at: 4), in: line),
-      let pid = Int(line[pidRange]),
-      let cpuSeconds = cpuSeconds(from: String(line[cpuTimeRange])),
-      let rssKB = UInt64(line[rssRange])
-    else {
-      return nil
+  private func processPowerSamples() -> [ProcessPowerSample] {
+    let capacity = max(Int(proc_listallpids(nil, 0)), 0) + 64
+    guard capacity > 0 else { return [] }
+
+    var pids = Array(repeating: pid_t(), count: capacity)
+    let count = pids.withUnsafeMutableBufferPointer {
+      proc_listallpids($0.baseAddress, Int32($0.count * MemoryLayout<pid_t>.stride))
     }
 
-    let command = String(line[commandRange])
-    let name = appName(from: command)
-    guard !name.isEmpty, name != "MacHub" else { return nil }
-    return ProcessPowerSample(
-      pid: pid,
-      name: name,
-      cpuSeconds: cpuSeconds,
-      memoryBytes: rssKB * 1024
-    )
+    return pids
+      .prefix(max(Int(count), 0))
+      .compactMap { pid in
+        guard pid > 0, pid != getpid() else { return nil }
+        return processPowerSample(pid: pid)
+      }
   }
 
-  private func cpuSeconds(from value: String) -> Double? {
-    let parts = value.split(separator: ":").map(String.init)
-    guard let secondsPart = parts.last, let seconds = Double(secondsPart) else {
-      return nil
-    }
-
-    var total = seconds
-    if parts.count >= 2, let minutes = Double(parts[parts.count - 2]) {
-      total += minutes * 60
-    }
-    if parts.count >= 3 {
-      let hoursPart = parts[parts.count - 3]
-      if let dayRange = hoursPart.range(of: "-") {
-        let days = Double(hoursPart[..<dayRange.lowerBound]) ?? 0
-        let hours = Double(hoursPart[dayRange.upperBound...]) ?? 0
-        total += days * 86_400 + hours * 3600
-      } else if let hours = Double(hoursPart) {
-        total += hours * 3600
+  private func processPowerSample(pid: pid_t) -> ProcessPowerSample? {
+    var info = rusage_info_v4()
+    let status = withUnsafeMutablePointer(to: &info) {
+      $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+        proc_pid_rusage(pid, RUSAGE_INFO_V4, $0)
       }
     }
-    return total
-  }
+    guard status == 0 else { return nil }
 
-  private func appName(from command: String) -> String {
-    if let range = command.range(of: #"/([^/]+)\.app/Contents/"#, options: .regularExpression) {
-      let component = String(command[range])
-      return component
-        .split(separator: "/")
-        .first(where: { $0.hasSuffix(".app") })?
-        .replacingOccurrences(of: ".app", with: "") ?? "Unknown"
-    }
+    var nameBuffer = Array(repeating: CChar(0), count: 1024)
+    let nameLength = proc_name(pid, &nameBuffer, UInt32(nameBuffer.count))
+    guard nameLength > 0 else { return nil }
 
-    let firstToken = command.split(separator: " ").first.map(String.init) ?? command
-    return URL(fileURLWithPath: firstToken).lastPathComponent
+    let name = String(cString: nameBuffer)
+    guard !name.isEmpty, name != "MacHub" else { return nil }
+    return ProcessPowerSample(
+      pid: Int(pid),
+      name: name,
+      cpuSeconds: Double(info.ri_user_time + info.ri_system_time) / 1_000_000_000,
+      memoryBytes: info.ri_resident_size
+    )
   }
 
   private func number(_ value: Any?) -> NSNumber {
@@ -379,39 +460,17 @@ actor SystemMetricsService {
     return 0
   }
 
-  private func firstValue(after label: String, in text: String) -> String? {
-    text.split(separator: "\n").compactMap { line in
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      guard trimmed.hasPrefix(label) else { return nil }
-      return trimmed.replacingOccurrences(of: label, with: "").trimmingCharacters(in: .whitespaces)
-    }.first
-  }
-
-  private func regexInt(_ pattern: String, in text: String) -> Int? {
-    regexString(pattern, in: text).flatMap(Int.init)
-  }
-
-  private func regexSignedInt(_ pattern: String, in text: String) -> Int? {
-    guard let raw = regexString(pattern, in: text), let unsigned = UInt64(raw) else {
-      return regexString(pattern, in: text).flatMap(Int.init)
+  private func unsignedNumber(_ value: Any?) -> UInt64 {
+    if let number = value as? NSNumber {
+      return number.uint64Value
     }
-    if unsigned > UInt64(Int64.max) {
-      return Int(Int64(bitPattern: unsigned))
+    if let uint64 = value as? UInt64 {
+      return uint64
     }
-    return Int(unsigned)
-  }
-
-  private func regexString(_ pattern: String, in text: String) -> String? {
-    guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else { return nil }
-    let range = NSRange(text.startIndex..<text.endIndex, in: text)
-    guard
-      let match = regex.firstMatch(in: text, range: range),
-      match.numberOfRanges > 1,
-      let matchRange = Range(match.range(at: 1), in: text)
-    else {
-      return nil
+    if let int = value as? Int {
+      return UInt64(max(int, 0))
     }
-    return String(text[matchRange])
+    return 0
   }
 }
 

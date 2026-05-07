@@ -17,6 +17,7 @@ struct WindowToolsView: View {
           )
           Divider()
           CompactMetricRow(title: "Accessibility", value: WindowManagerService.isAccessibilityTrusted ? "Enabled" : "Needed", systemImage: "hand.raised")
+          CompactMetricRow(title: "Hotkeys", value: "\(HotKeyManager.shared.registeredHotKeyCount)/\(WindowLayout.allCases.count)", systemImage: "keyboard")
           Button {
             WindowManagerService.requestAccessibilityPermission()
             WindowManagerService.openAccessibilitySettings()
@@ -31,6 +32,12 @@ struct WindowToolsView: View {
           Text(status)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+          if !HotKeyManager.shared.registrationFailures.isEmpty {
+            Text(hotKeyFailureSummary)
+              .font(.callout)
+              .foregroundStyle(MacHubTheme.yellow)
+              .fixedSize(horizontal: false, vertical: true)
+          }
           Text("Some apps block resizing, but most standard app windows should respond once Accessibility is enabled.")
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -88,9 +95,22 @@ struct WindowToolsView: View {
       status = "Applied \(layout.rawValue)."
     } catch WindowManagerService.WindowError.accessibilityPermissionMissing {
       status = "Enable MacHub in System Settings > Privacy & Security > Accessibility."
+    } catch WindowManagerService.WindowError.noFrontmostApplication {
+      status = "No target app found. Click the app window you want to resize, then try again."
+    } catch WindowManagerService.WindowError.noFocusedWindow {
+      status = "The target app did not report a focused window."
+    } catch WindowManagerService.WindowError.cannotMoveWindow(let position, let size) {
+      status = "macOS refused the resize. AX position \(position.rawValue), size \(size.rawValue). Try a normal non-full-screen window."
     } catch {
       status = "Could not resize the front window. Some apps block window control."
     }
+  }
+
+  private var hotKeyFailureSummary: String {
+    let failed = HotKeyManager.shared.registrationFailures
+      .map { "\($0.layout.rawValue) \($0.shortcut.displayLabel): \($0.status)" }
+      .joined(separator: ", ")
+    return "Some global shortcuts did not register: \(failed)"
   }
 }
 

@@ -14,15 +14,20 @@ final class DashboardStore: ObservableObject {
   @Published var isRefreshing = false
   @Published var isScanningFolders = false
   @Published var isScanningCurrentFolder = false
+  @Published var hasFullDiskAccess = FullDiskAccessService.hasFullDiskAccess()
   @Published var lastUpdated: Date?
 
   private let metricsService = SystemMetricsService()
   private let scanner = FolderScanner()
   private var metricsRefreshTask: Task<Void, Never>?
+  private var batteryRefreshTask: Task<Void, Never>?
   private var metricsRefreshActivity: NSObjectProtocol?
-  private let metricsRefreshInterval: TimeInterval = 1.5
+  private static let metricsRefreshIntervalNanoseconds: UInt64 = 1_500_000_000
+  private static let batteryRefreshIntervalNanoseconds: UInt64 = 500_000_000
   private var isRefreshingMetrics = false
+  private var isRefreshingBattery = false
   private var didStart = false
+  private var didStartDashboardScans = false
 
   init() {
     startAutoRefresh()
@@ -48,10 +53,27 @@ final class DashboardStore: ObservableObject {
     )
     metricsRefreshTask = Task { @MainActor [weak self] in
       while !Task.isCancelled {
-        guard let self else { return }
-        await self.refreshMetrics()
+        if let self {
+          await self.refreshMetrics()
+        } else {
+          return
+        }
         do {
-          try await Task.sleep(nanoseconds: UInt64(self.metricsRefreshInterval * 1_000_000_000))
+          try await Task.sleep(nanoseconds: Self.metricsRefreshIntervalNanoseconds)
+        } catch {
+          return
+        }
+      }
+    }
+    batteryRefreshTask = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        if let self {
+          await self.refreshBatteryOnly()
+        } else {
+          return
+        }
+        do {
+          try await Task.sleep(nanoseconds: Self.batteryRefreshIntervalNanoseconds)
         } catch {
           return
         }
@@ -66,6 +88,18 @@ final class DashboardStore: ObservableObject {
     }
     didStart = true
     await refreshMetrics()
+  }
+
+  func startDashboard() async {
+    await start()
+    await startDashboardScansIfNeeded()
+  }
+
+  private func startDashboardScansIfNeeded() async {
+    guard !didStartDashboardScans else { return }
+    didStartDashboardScans = true
+    refreshPrivacyStatus()
+    guard hasFullDiskAccess else { return }
     async let folders: Void = refreshFolders()
     async let cleanup: Void = refreshCleanupTargets()
     _ = await (folders, cleanup)
@@ -74,9 +108,12 @@ final class DashboardStore: ObservableObject {
   func refreshAll() async {
     isRefreshing = true
     await refreshMetrics()
-    async let folders: Void = refreshFolders()
-    async let cleanup: Void = refreshCleanupTargets()
-    _ = await (folders, cleanup)
+    refreshPrivacyStatus()
+    if hasFullDiskAccess {
+      async let folders: Void = refreshFolders()
+      async let cleanup: Void = refreshCleanupTargets()
+      _ = await (folders, cleanup)
+    }
     isRefreshing = false
   }
 
@@ -91,6 +128,10 @@ final class DashboardStore: ObservableObject {
   }
 
   func refreshBatteryOnly() async {
+    guard !isRefreshingBattery else { return }
+    isRefreshingBattery = true
+    defer { isRefreshingBattery = false }
+
     let battery = await metricsService.batterySnapshot()
     snapshot.battery = battery
     appendBatteryHistory(from: battery)
@@ -100,6 +141,8 @@ final class DashboardStore: ObservableObject {
   func stopAutoRefresh() {
     metricsRefreshTask?.cancel()
     metricsRefreshTask = nil
+    batteryRefreshTask?.cancel()
+    batteryRefreshTask = nil
     if let metricsRefreshActivity {
       ProcessInfo.processInfo.endActivity(metricsRefreshActivity)
       self.metricsRefreshActivity = nil
@@ -108,12 +151,23 @@ final class DashboardStore: ObservableObject {
 
   deinit {
     metricsRefreshTask?.cancel()
+    batteryRefreshTask?.cancel()
     if let metricsRefreshActivity {
       ProcessInfo.processInfo.endActivity(metricsRefreshActivity)
     }
   }
 
   func refreshFolders() async {
+    refreshPrivacyStatus()
+    guard hasFullDiskAccess else {
+      folders = []
+      selectedFolder = nil
+      currentFolder = nil
+      folderPath = []
+      isScanningFolders = false
+      return
+    }
+
     isScanningFolders = true
     folders = []
     selectedFolder = nil
@@ -137,8 +191,18 @@ final class DashboardStore: ObservableObject {
   }
 
   func refreshCleanupTargets() async {
+    refreshPrivacyStatus()
+    guard hasFullDiskAccess else {
+      cleanupTargets = []
+      return
+    }
+
     cleanupTargets = await scanner.scanCleanupTargets()
     lastUpdated = Date()
+  }
+
+  func refreshPrivacyStatus() {
+    hasFullDiskAccess = FullDiskAccessService.hasFullDiskAccess()
   }
 
   func openRoot(_ folder: FolderUsage) {

@@ -29,6 +29,7 @@ struct CleanerView: View {
           } label: {
             Label("Rescan Junk", systemImage: "arrow.clockwise")
           }
+          .disabled(!store.hasFullDiskAccess)
 
           Divider()
             .frame(height: 52)
@@ -37,10 +38,10 @@ struct CleanerView: View {
             Text("Full Disk Access")
               .font(.caption)
               .foregroundStyle(.secondary)
-            Text("Review")
+            Text(store.hasFullDiskAccess ? "Enabled" : "Needed")
               .font(.headline)
-              .foregroundStyle(MacHubTheme.green)
-            Text("About Full Disk Access")
+              .foregroundStyle(store.hasFullDiskAccess ? MacHubTheme.green : MacHubTheme.yellow)
+            Text(store.hasFullDiskAccess ? "Ready to scan protected folders" : "Required before protected scans")
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -77,9 +78,9 @@ struct CleanerView: View {
 
         if store.cleanupTargets.isEmpty {
           ContentUnavailableView(
-            "Nothing scanned yet",
-            systemImage: "sparkles",
-            description: Text("Run a junk scan to estimate cleanable files.")
+            store.hasFullDiskAccess ? "Nothing scanned yet" : "Full Disk Access needed",
+            systemImage: store.hasFullDiskAccess ? "sparkles" : "lock",
+            description: Text(store.hasFullDiskAccess ? "Run a junk scan to estimate cleanable files." : "Enable MacHub in Full Disk Access before scanning protected folders.")
           )
           .frame(maxWidth: .infinity, minHeight: 180)
         }

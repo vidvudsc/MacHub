@@ -17,6 +17,15 @@ INFO_PLIST="$APP_CONTENTS/Info.plist"
 RESOURCES="$APP_CONTENTS/Resources"
 ICONSET="$DIST_DIR/MacHub.iconset"
 ICON_FILE="$RESOURCES/MacHub.icns"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+ALLOW_ADHOC_FALLBACK="${ALLOW_ADHOC_FALLBACK:-0}"
+
+if [[ -z "$SIGN_IDENTITY" ]]; then
+  SIGN_IDENTITY="$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null | /usr/bin/awk -F '"' '/Apple Development:/ { print $2; exit }')"
+fi
+if [[ -z "$SIGN_IDENTITY" ]]; then
+  SIGN_IDENTITY="-"
+fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
@@ -62,6 +71,33 @@ build_icon() {
 
 build_icon
 
+sign_app() {
+  if [[ "$SIGN_IDENTITY" == "-" ]]; then
+    /usr/bin/codesign --force --sign - "$APP_BUNDLE"
+    return
+  fi
+
+  /usr/bin/codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$APP_BUNDLE" &
+  local sign_pid=$!
+  for _ in {1..30}; do
+    if ! /bin/kill -0 "$sign_pid" >/dev/null 2>&1; then
+      wait "$sign_pid"
+      return
+    fi
+    sleep 1
+  done
+
+  /bin/kill "$sign_pid" >/dev/null 2>&1 || true
+  wait "$sign_pid" >/dev/null 2>&1 || true
+  if [[ "$ALLOW_ADHOC_FALLBACK" != "1" ]]; then
+    echo "error: signing with '$SIGN_IDENTITY' timed out." >&2
+    echo "Unlock the signing key in Keychain Access, or run with SIGN_IDENTITY=- only for throwaway local builds." >&2
+    return 1
+  fi
+  echo "warning: signing with '$SIGN_IDENTITY' timed out; falling back to ad-hoc signing." >&2
+  /usr/bin/codesign --force --sign - "$APP_BUNDLE"
+}
+
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -87,10 +123,11 @@ cat >"$INFO_PLIST" <<PLIST
 </plist>
 PLIST
 
-/usr/bin/codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
+sign_app
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  install_app
+  /usr/bin/open "$INSTALL_BUNDLE"
 }
 
 install_app() {
@@ -107,7 +144,7 @@ case "$MODE" in
     ;;
   --install-run|install-run)
     install_app
-    /usr/bin/open -n "$INSTALL_BUNDLE"
+    /usr/bin/open "$INSTALL_BUNDLE"
     ;;
   run)
     open_app

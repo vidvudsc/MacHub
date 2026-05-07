@@ -43,6 +43,8 @@ private struct BatteryFactsCard: View {
         InfoRow("Mode", battery.isPluggedIn ? "Plugged In" : "On Battery", systemImage: "powerplug")
         InfoRow("Power Source", battery.isPluggedIn ? "Adapter" : "Battery", systemImage: "battery.75percent")
         InfoRow("Battery Power", Formatters.watts(battery.watts), systemImage: "bolt")
+        InfoRow("Adapter Power", Formatters.absoluteWatts(battery.externalWatts), systemImage: "powerplug")
+        InfoRow("Mac Load", Formatters.absoluteWatts(battery.systemWatts), systemImage: "laptopcomputer")
         InfoRow("Voltage", Formatters.volts(battery.voltage), systemImage: "waveform.path.ecg")
         InfoRow("Current", Formatters.amps(battery.amperage), systemImage: "plusminus")
         InfoRow("Temperature", Formatters.celsius(battery.temperature), systemImage: "thermometer.medium")

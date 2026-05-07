@@ -254,39 +254,75 @@ struct PowerFlowPills: View {
   var compact = false
 
   var body: some View {
-    HStack(spacing: compact ? 8 : 14) {
-      PowerFlowPill(systemImage: leftIcon, value: wattValue, compact: compact)
-      Image(systemName: "arrow.right")
-        .font(compact ? .callout : .title3)
-        .foregroundStyle(.secondary)
-        .frame(width: compact ? 18 : 24)
-      PowerFlowPill(systemImage: rightIcon, value: wattValue, compact: compact)
+    VStack(spacing: compact ? 6 : 10) {
+      if battery.isPluggedIn, hasAdapterPower {
+        PowerFlowLine(
+          leftIcon: "powerplug",
+          rightIcon: "laptopcomputer",
+          value: formattedWatts(systemLoadWatts),
+          compact: compact
+        )
+
+        if hasBatteryChargeFlow {
+          PowerFlowLine(
+            leftIcon: "powerplug",
+            rightIcon: battery.isCharging ? "battery.100percent.bolt" : "battery.75percent",
+            value: formattedWatts(abs(battery.watts ?? 0)),
+            compact: compact
+          )
+        }
+      } else {
+        PowerFlowLine(
+          leftIcon: "battery.75percent",
+          rightIcon: "laptopcomputer",
+          value: formattedWatts(abs(battery.watts ?? 0)),
+          compact: compact
+        )
+      }
     }
     .frame(maxWidth: .infinity, alignment: .center)
   }
 
-  private var wattValue: String {
+  private var hasAdapterPower: Bool {
+    (battery.externalWatts ?? 0) > 0.1
+  }
+
+  private var hasBatteryChargeFlow: Bool {
+    battery.isCharging && abs(battery.watts ?? 0) > 0.1
+  }
+
+  private var systemLoadWatts: Double? {
+    if let systemWatts = battery.systemWatts, systemWatts > 0.1 {
+      return systemWatts
+    }
+    if let externalWatts = battery.externalWatts {
+      let batteryChargeWatts = battery.isCharging ? abs(battery.watts ?? 0) : 0
+      return max(externalWatts - batteryChargeWatts, 0)
+    }
+    return nil
+  }
+
+  private func formattedWatts(_ value: Double?) -> String {
     guard battery.isPresent else { return "--" }
-    return compact ? Formatters.shortWatts(battery.watts) : Formatters.absoluteWatts(battery.watts)
+    return compact ? Formatters.shortWatts(value) : Formatters.absoluteWatts(value)
   }
+}
 
-  private var leftIcon: String {
-    if !battery.isPresent { return "battery.0percent" }
-    if let watts = battery.watts, watts > 0.1 {
-      return "powerplug"
-    }
-    if battery.isPluggedIn, let watts = battery.watts, watts < -0.1 {
-      return "powerplug"
-    }
-    return "battery.75percent"
-  }
+private struct PowerFlowLine: View {
+  let leftIcon: String
+  let rightIcon: String
+  let value: String
+  var compact = false
 
-  private var rightIcon: String {
-    if !battery.isPresent { return "laptopcomputer" }
-    if let watts = battery.watts, watts > 0.1 {
-      return "battery.75percent"
+  var body: some View {
+    HStack(spacing: compact ? 8 : 14) {
+      PowerFlowPill(systemImage: leftIcon, value: value, compact: compact)
+      Image(systemName: "arrow.right")
+        .font(compact ? .callout : .title3)
+        .foregroundStyle(.secondary)
+        .frame(width: compact ? 18 : 24)
+      PowerFlowPill(systemImage: rightIcon, value: value, compact: compact)
     }
-    return "laptopcomputer"
   }
 }
 

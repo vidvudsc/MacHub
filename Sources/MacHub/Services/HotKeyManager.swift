@@ -6,6 +6,7 @@ final class HotKeyManager {
 
   private var hotKeyRefs: [EventHotKeyRef?] = []
   private var handlerRef: EventHandlerRef?
+  private(set) var registrationFailures: [(layout: WindowLayout, shortcut: WindowShortcut, status: OSStatus)] = []
 
   private init() { }
 
@@ -16,6 +17,7 @@ final class HotKeyManager {
 
   func reloadWindowHotKeys() {
     unregisterWindowHotKeys()
+    registrationFailures = []
 
     for layout in WindowLayout.allCases {
       var hotKeyRef: EventHotKeyRef?
@@ -31,8 +33,14 @@ final class HotKeyManager {
       )
       if status == noErr {
         hotKeyRefs.append(hotKeyRef)
+      } else {
+        registrationFailures.append((layout, shortcut, status))
       }
     }
+  }
+
+  var registeredHotKeyCount: Int {
+    hotKeyRefs.count
   }
 
   private func unregisterWindowHotKeys() {

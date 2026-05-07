@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
   @ObservedObject var store: DashboardStore
   @SceneStorage("selectedSection") private var selectedSection = DashboardSection.overview.rawValue
+  @State private var selectedActivityMetric: ActivityMetric = .cpu
 
   private var section: DashboardSection {
     get { DashboardSection(rawValue: selectedSection) ?? .overview }
@@ -22,7 +23,11 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 14) {
           switch section {
           case .overview:
-            OverviewView(store: store)
+            OverviewView(
+              store: store,
+              selectedMetric: $selectedActivityMetric,
+              selectedSection: Binding(get: { section }, set: { section = $0 })
+            )
           case .clean:
             CleanerView(store: store)
           case .storage:

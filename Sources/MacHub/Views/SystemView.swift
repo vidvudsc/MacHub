@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SystemView: View {
   @ObservedObject var store: DashboardStore
+  @State private var selectedMetric: ActivityMetric = .cpu
 
   private var snapshot: SystemSnapshot {
     store.snapshot
@@ -9,7 +10,7 @@ struct SystemView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
-      ActivityMonitorPanel(store: store)
+      ActivityMonitorPanel(store: store, metric: $selectedMetric)
 
       CardGrid {
         MetricCard(
