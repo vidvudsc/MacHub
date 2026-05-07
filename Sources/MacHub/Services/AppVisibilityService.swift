@@ -2,12 +2,14 @@ import AppKit
 import Carbon
 
 enum AppVisibilityService {
+  private static let preferredDashboardContentSize = NSSize(width: 980, height: 680)
   private static var isHidingToMenuBar = false
 
   static func configureDashboardWindow(_ window: NSWindow?) {
     guard let window, isDashboardWindow(window) else { return }
     window.isReleasedWhenClosed = false
     window.delegate = DashboardWindowDelegate.shared
+    _ = window.setFrameAutosaveName("")
     closeDuplicateDashboardWindows(keeping: window)
   }
 
@@ -40,6 +42,7 @@ enum AppVisibilityService {
     if primary.isMiniaturized {
       primary.deminiaturize(nil)
     }
+    applyDefaultDashboardSizeIfNeeded(primary)
     primary.makeKeyAndOrderFront(nil)
     primary.orderFrontRegardless()
     NSApp.activate(ignoringOtherApps: true)
@@ -56,38 +59,65 @@ enum AppVisibilityService {
     guard windows.count > 1 else { return }
     let keeper = primary ?? windows.first
     for window in windows where window !== keeper {
-      window.orderOut(nil)
+      window.close()
     }
   }
 
   static func hideToMenuBar() {
-    guard !isHidingToMenuBar else { return }
-    isHidingToMenuBar = true
+    guard beginHidingToMenuBar() else { return }
 
-    for window in NSApp.windows {
-      window.orderOut(nil)
+    let windows = dashboardWindows()
+    if windows.isEmpty {
+      finishHidingToMenuBar()
+      return
     }
-    NSApp.hide(nil)
 
-    enforceMenuBarOnlyMode()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { enforceMenuBarOnlyMode() }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { enforceMenuBarOnlyMode() }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-      enforceMenuBarOnlyMode()
-      isHidingToMenuBar = false
+    for window in windows {
+      window.close()
+    }
+
+    DispatchQueue.main.async {
+      finishHidingToMenuBar()
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+      finishHidingToMenuBar()
     }
   }
 
-  private static func enforceMenuBarOnlyMode() {
-    for window in NSApp.windows where isDashboardWindow(window) {
-      window.orderOut(nil)
+  fileprivate static func closeButtonWillCloseDashboard() {
+    guard beginHidingToMenuBar() else { return }
+    DispatchQueue.main.async {
+      finishHidingToMenuBar()
     }
-    transformProcess(to: ProcessApplicationTransformState(kProcessTransformToUIElementApplication))
-    NSApp.setActivationPolicy(.prohibited)
-    NSApp.setActivationPolicy(.accessory)
-    NSApp.hide(nil)
-    NSRunningApplication.current.hide()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+      finishHidingToMenuBar()
+    }
+  }
+
+  private static func beginHidingToMenuBar() -> Bool {
+    guard !isHidingToMenuBar else { return false }
+    isHidingToMenuBar = true
+    return true
+  }
+
+  private static func finishHidingToMenuBar() {
     activateFallbackApplication()
+    NSApp.setActivationPolicy(.accessory)
+    isHidingToMenuBar = false
+  }
+
+  private static func applyDefaultDashboardSizeIfNeeded(_ window: NSWindow) {
+    guard window.frame.width < 900 || window.frame.height < 620 else { return }
+    let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? window.frame
+    let width = min(preferredDashboardContentSize.width, visibleFrame.width)
+    let height = min(preferredDashboardContentSize.height, visibleFrame.height)
+    let frame = CGRect(
+      x: visibleFrame.midX - width / 2,
+      y: visibleFrame.midY - height / 2,
+      width: width,
+      height: height
+    )
+    window.setFrame(frame.integral, display: true, animate: false)
   }
 
   private static func activateFallbackApplication() {
@@ -118,8 +148,8 @@ private final class DashboardWindowDelegate: NSObject, NSWindowDelegate {
   static let shared = DashboardWindowDelegate()
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
-    AppVisibilityService.hideToMenuBar()
-    return false
+    AppVisibilityService.closeButtonWillCloseDashboard()
+    return true
   }
 
   func windowWillMiniaturize(_ notification: Notification) {
@@ -129,7 +159,7 @@ private final class DashboardWindowDelegate: NSObject, NSWindowDelegate {
       if window.isMiniaturized {
         window.deminiaturize(nil)
       }
-      window.orderOut(nil)
+      window.close()
     }
   }
 }

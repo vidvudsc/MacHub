@@ -49,11 +49,12 @@ struct MacHubApp: App {
   var body: some Scene {
     WindowGroup("MacHub", id: "main") {
       ContentView(store: store)
-        .frame(minWidth: 680, minHeight: 380)
+        .frame(minWidth: 680, idealWidth: 980, minHeight: 380, idealHeight: 680)
         .task {
           await store.startDashboard()
         }
     }
+    .defaultSize(width: 980, height: 680)
     .windowStyle(.hiddenTitleBar)
     .commands {
       CommandGroup(replacing: .newItem) { }
