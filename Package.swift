@@ -19,6 +19,10 @@ let package = Package(
         .linkedFramework("Carbon"),
         .linkedFramework("IOKit")
       ]
+    ),
+    .testTarget(
+      name: "MacHubTests",
+      dependencies: ["MacHub"]
     )
   ]
 )

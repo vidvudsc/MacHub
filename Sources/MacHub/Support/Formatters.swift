@@ -48,6 +48,11 @@ enum Formatters {
     return String(format: "%.1f W", abs(value))
   }
 
+  static func shortWatts(_ value: Double?) -> String {
+    guard let value else { return "--" }
+    return String(format: "%.1fW", abs(value))
+  }
+
   static func estimatedWatts(_ value: Double?) -> String {
     guard let value else { return "Estimating" }
     return String(format: "~%.1f W", abs(value))

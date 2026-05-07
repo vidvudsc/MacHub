@@ -251,21 +251,23 @@ struct StatusPill: View {
 
 struct PowerFlowPills: View {
   let battery: BatteryInfo
+  var compact = false
 
   var body: some View {
-    HStack(spacing: 14) {
-      PowerFlowPill(systemImage: leftIcon, value: wattValue)
+    HStack(spacing: compact ? 8 : 14) {
+      PowerFlowPill(systemImage: leftIcon, value: wattValue, compact: compact)
       Image(systemName: "arrow.right")
-        .font(.title3)
+        .font(compact ? .callout : .title3)
         .foregroundStyle(.secondary)
-      PowerFlowPill(systemImage: rightIcon, value: wattValue)
+        .frame(width: compact ? 18 : 24)
+      PowerFlowPill(systemImage: rightIcon, value: wattValue, compact: compact)
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .frame(maxWidth: .infinity, alignment: .center)
   }
 
   private var wattValue: String {
     guard battery.isPresent else { return "--" }
-    return Formatters.absoluteWatts(battery.watts)
+    return compact ? Formatters.shortWatts(battery.watts) : Formatters.absoluteWatts(battery.watts)
   }
 
   private var leftIcon: String {
@@ -291,20 +293,22 @@ struct PowerFlowPills: View {
 private struct PowerFlowPill: View {
   let systemImage: String
   let value: String
+  var compact = false
 
   var body: some View {
-    HStack(spacing: 10) {
+    HStack(spacing: compact ? 6 : 10) {
       Image(systemName: systemImage)
-        .font(.system(size: 17, weight: .semibold))
+        .font(.system(size: compact ? 14 : 17, weight: .semibold))
       Text(value)
-        .font(.system(size: 18, weight: .semibold, design: .rounded).monospacedDigit())
+        .font(.system(size: compact ? 14 : 18, weight: .semibold, design: .rounded).monospacedDigit())
         .lineLimit(1)
-        .minimumScaleFactor(0.72)
+        .minimumScaleFactor(0.68)
     }
     .foregroundStyle(.secondary)
-    .padding(.horizontal, 18)
-    .padding(.vertical, 10)
-    .frame(minWidth: 118)
+    .padding(.horizontal, compact ? 10 : 18)
+    .padding(.vertical, compact ? 8 : 10)
+    .frame(width: compact ? 104 : nil)
+    .frame(minWidth: compact ? nil : 118)
     .background(Color.white.opacity(0.07), in: Capsule())
   }
 }

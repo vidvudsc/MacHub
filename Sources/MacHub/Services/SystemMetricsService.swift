@@ -2,11 +2,19 @@ import Darwin
 import Foundation
 import IOKit.ps
 
-final class SystemMetricsService {
+actor SystemMetricsService {
   private var previousCPU = host_cpu_load_info()
   private var previousNetworkTotals: (received: UInt64, sent: UInt64, date: Date)?
   private var previousDiskTotal: (bytes: UInt64, date: Date)?
+  private var previousPowerSamples: [Int: ProcessPowerSample] = [:]
+  private var previousPowerSampleDate: Date?
+  private var cachedTopPowerApp: (date: Date, app: PowerAppInfo?)?
+  private var cachedBatteryDetails: (date: Date, details: BatteryDetails)?
   private var cachedGPU: GPUInfo?
+
+  func batterySnapshot() async -> BatteryInfo {
+    await batteryInfo()
+  }
 
   func snapshot() async -> SystemSnapshot {
     async let battery = batteryInfo()
@@ -19,12 +27,13 @@ final class SystemMetricsService {
     let diskRate = await diskRate()
     let processCount = await countProcesses()
     let batteryInfo = await battery
+    let gpuInfo = await gpu
     let topPowerApp = await topPowerHungryApp(
       systemWatts: batteryInfo.watts.map(abs),
       systemCPUUsage: cpu
     )
 
-    return await SystemSnapshot(
+    return SystemSnapshot(
       cpuUsage: cpu,
       memoryUsed: memory.used,
       memoryTotal: memory.total,
@@ -37,7 +46,7 @@ final class SystemMetricsService {
       networkOutPerSecond: networkRates.sent,
       diskBytesPerSecond: diskRate,
       battery: batteryInfo,
-      gpu: gpu,
+      gpu: gpuInfo,
       topPowerApp: topPowerApp,
       uptime: ProcessInfo.processInfo.systemUptime,
       processCount: processCount
@@ -138,31 +147,18 @@ final class SystemMetricsService {
     )
   }
 
-  private func smartBatteryDetails() async -> (watts: Double?, voltage: Double?, amperage: Double?, temperature: Double?, cycleCount: Int?, health: String?) {
+  private func smartBatteryDetails() async -> BatteryDetails {
+    if let cachedBatteryDetails, Date().timeIntervalSince(cachedBatteryDetails.date) < 0.5 {
+      return cachedBatteryDetails.details
+    }
+
     guard let output = try? await ProcessRunner.run("/usr/sbin/ioreg", ["-rn", "AppleSmartBattery"], timeout: 2) else {
-      return (nil, nil, nil, nil, nil, nil)
+      return cachedBatteryDetails?.details ?? BatteryDetails()
     }
 
-    let voltageMillivolts = regexInt("^\\s+\"(?:AppleRawBatteryVoltage|Voltage)\"\\s*=\\s*(\\d+)", in: output)
-    let amperageMilliamps = regexSignedInt("^\\s+\"InstantAmperage\"\\s*=\\s*(\\d+)", in: output)
-      ?? regexSignedInt("^\\s+\"Amperage\"\\s*=\\s*(\\d+)", in: output)
-    let batteryPowerMilliwatts = regexSignedInt("\"BatteryPower\"\\s*=\\s*(\\d+)", in: output)
-    let cycleCount = regexInt("^\\s+\"CycleCount\"\\s*=\\s*(\\d+)", in: output)
-    let temperature = regexInt("^\\s+\"Temperature\"\\s*=\\s*(\\d+)", in: output).map { Double($0) / 100 }
-    let condition = regexString("^\\s+\"BatteryHealth\"\\s*=\\s*\"([^\"]+)\"", in: output)
-      ?? regexString("^\\s+\"PermanentFailureStatus\"\\s*=\\s*(\\d+)", in: output).map { $0 == "0" ? "Normal" : "Service recommended" }
-
-    let voltage = voltageMillivolts.map { Double($0) / 1000 }
-    let amperage = amperageMilliamps.map { Double($0) / 1000 }
-    let watts: Double?
-    if let batteryPowerMilliwatts {
-      watts = Double(batteryPowerMilliwatts) / 1000
-    } else if let voltage, let amperage {
-      watts = voltage * amperage
-    } else {
-      watts = nil
-    }
-    return (watts, voltage, amperage, temperature, cycleCount, condition)
+    let details = BatteryTelemetryParser.details(from: output)
+    cachedBatteryDetails = (Date(), details)
+    return details
   }
 
   private func gpuInfo() async -> GPUInfo {
@@ -255,39 +251,76 @@ final class SystemMetricsService {
   }
 
   private func topPowerHungryApp(systemWatts: Double?, systemCPUUsage: Double) async -> PowerAppInfo? {
-    guard let output = try? await ProcessRunner.run("/bin/ps", ["-axo", "pid=,pcpu=,command=", "-r"], timeout: 2) else {
+    if let cachedTopPowerApp, Date().timeIntervalSince(cachedTopPowerApp.date) < 9 {
+      return cachedTopPowerApp.app
+    }
+
+    guard let output = try? await ProcessRunner.run("/bin/ps", ["-axo", "pid=,cputime=,rss=,command=", "-r"], timeout: 2) else {
+      return cachedTopPowerApp?.app
+    }
+
+    let now = Date()
+    let samples = output.split(separator: "\n").compactMap { processPowerSample(from: String($0)) }
+    defer {
+      previousPowerSamples = Dictionary(uniqueKeysWithValues: samples.map { ($0.pid, $0) })
+      previousPowerSampleDate = now
+    }
+
+    guard let previousPowerSampleDate else {
       return nil
     }
 
-    var cpuByApp: [String: Double] = [:]
-    for line in output.split(separator: "\n").prefix(40) {
-      guard let sample = processPowerSample(from: String(line)) else { continue }
-      cpuByApp[sample.name, default: 0] += sample.cpuPercent
+    let elapsed = max(now.timeIntervalSince(previousPowerSampleDate), 0.25)
+    var apps: [String: (cpuPercent: Double, memoryBytes: UInt64)] = [:]
+    for sample in samples {
+      guard let previous = previousPowerSamples[sample.pid] else { continue }
+      let cpuSeconds = sample.cpuSeconds - previous.cpuSeconds
+      guard cpuSeconds > 0 else {
+        apps[sample.name, default: (0, 0)].memoryBytes += sample.memoryBytes
+        continue
+      }
+      let cpuPercent = min(max(cpuSeconds / elapsed * 100, 0), 1600)
+      apps[sample.name, default: (0, 0)].cpuPercent += cpuPercent
+      apps[sample.name, default: (0, 0)].memoryBytes += sample.memoryBytes
     }
 
-    guard let top = cpuByApp.max(by: { $0.value < $1.value }), top.value > 0.2 else {
+    guard let top = apps.max(by: { $0.value.cpuPercent < $1.value.cpuPercent }), top.value.cpuPercent > 0.1 else {
+      cachedTopPowerApp = (now, nil)
       return nil
     }
 
+    let totalActiveCPU = max(apps.values.reduce(0) { $0 + $1.cpuPercent }, top.value.cpuPercent)
+    let appShare = min(max(top.value.cpuPercent / totalActiveCPU, 0), 1)
     let estimatedWatts: Double?
-    if let systemWatts, systemWatts > 0.1 {
-      let activeCPUPercent = max(systemCPUUsage * 100, top.value)
-      estimatedWatts = min(systemWatts, systemWatts * min(top.value / activeCPUPercent, 1))
+    if let systemWatts, systemWatts > 0.1, systemCPUUsage > 0.01 {
+      let variablePower = max(systemWatts - 4, systemWatts * min(systemCPUUsage, 0.65))
+      estimatedWatts = min(systemWatts, max(0, variablePower * appShare))
     } else {
       estimatedWatts = nil
     }
 
-    return PowerAppInfo(name: top.key, cpuPercent: top.value, estimatedWatts: estimatedWatts)
+    let app = PowerAppInfo(
+      name: top.key,
+      cpuPercent: top.value.cpuPercent,
+      memoryBytes: top.value.memoryBytes,
+      estimatedWatts: estimatedWatts
+    )
+    cachedTopPowerApp = (now, app)
+    return app
   }
 
-  private func processPowerSample(from line: String) -> (name: String, cpuPercent: Double)? {
-    let pattern = #"^\s*\d+\s+([0-9.]+)\s+(.+)$"#
+  private func processPowerSample(from line: String) -> ProcessPowerSample? {
+    let pattern = #"^\s*(\d+)\s+([0-9:\.-]+)\s+(\d+)\s+(.+)$"#
     guard
       let regex = try? NSRegularExpression(pattern: pattern),
       let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..<line.endIndex, in: line)),
-      let cpuRange = Range(match.range(at: 1), in: line),
-      let commandRange = Range(match.range(at: 2), in: line),
-      let cpuPercent = Double(line[cpuRange])
+      let pidRange = Range(match.range(at: 1), in: line),
+      let cpuTimeRange = Range(match.range(at: 2), in: line),
+      let rssRange = Range(match.range(at: 3), in: line),
+      let commandRange = Range(match.range(at: 4), in: line),
+      let pid = Int(line[pidRange]),
+      let cpuSeconds = cpuSeconds(from: String(line[cpuTimeRange])),
+      let rssKB = UInt64(line[rssRange])
     else {
       return nil
     }
@@ -295,7 +328,35 @@ final class SystemMetricsService {
     let command = String(line[commandRange])
     let name = appName(from: command)
     guard !name.isEmpty, name != "MacHub" else { return nil }
-    return (name, cpuPercent)
+    return ProcessPowerSample(
+      pid: pid,
+      name: name,
+      cpuSeconds: cpuSeconds,
+      memoryBytes: rssKB * 1024
+    )
+  }
+
+  private func cpuSeconds(from value: String) -> Double? {
+    let parts = value.split(separator: ":").map(String.init)
+    guard let secondsPart = parts.last, let seconds = Double(secondsPart) else {
+      return nil
+    }
+
+    var total = seconds
+    if parts.count >= 2, let minutes = Double(parts[parts.count - 2]) {
+      total += minutes * 60
+    }
+    if parts.count >= 3 {
+      let hoursPart = parts[parts.count - 3]
+      if let dayRange = hoursPart.range(of: "-") {
+        let days = Double(hoursPart[..<dayRange.lowerBound]) ?? 0
+        let hours = Double(hoursPart[dayRange.upperBound...]) ?? 0
+        total += days * 86_400 + hours * 3600
+      } else if let hours = Double(hoursPart) {
+        total += hours * 3600
+      }
+    }
+    return total
   }
 
   private func appName(from command: String) -> String {
@@ -352,4 +413,11 @@ final class SystemMetricsService {
     }
     return String(text[matchRange])
   }
+}
+
+private struct ProcessPowerSample {
+  var pid: Int
+  var name: String
+  var cpuSeconds: Double
+  var memoryBytes: UInt64
 }

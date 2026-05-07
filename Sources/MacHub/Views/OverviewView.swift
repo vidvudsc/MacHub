@@ -42,13 +42,13 @@ struct OverviewView: View {
             title: "Network",
             subtitle: "In \(Formatters.bytes(store.snapshot.networkInPerSecond))/s  Out \(Formatters.bytes(store.snapshot.networkOutPerSecond))/s",
             value: "\(Formatters.bytes(store.snapshot.networkInPerSecond + store.snapshot.networkOutPerSecond))/s",
-            systemImage: "arrow.down.arrow.up",
+            systemImage: "network",
             tint: MacHubTheme.purple,
             values: store.history.suffix(40).map { Double($0.networkInPerSecond + $0.networkOutPerSecond) }
           )
           MetricSummaryCard(
             title: "Battery",
-            subtitle: store.snapshot.battery.stateLabel,
+            subtitle: batterySummary,
             value: store.snapshot.battery.isPresent ? Formatters.percent(store.snapshot.battery.percent) : "--",
             systemImage: store.snapshot.battery.isCharging ? "battery.100percent.bolt" : "battery.75percent",
             tint: MacHubTheme.green,
@@ -90,6 +90,24 @@ struct OverviewView: View {
       }
     }
   }
+
+  private var batterySummary: String {
+    let battery = store.snapshot.battery
+    guard battery.isPresent else { return "No battery" }
+
+    let time = Formatters.batteryTime(battery)
+    guard let watts = battery.watts else {
+      return "\(time) · measuring watts"
+    }
+
+    if watts < -0.1 {
+      return "\(time) · \(Formatters.absoluteWatts(watts)) out"
+    }
+    if watts > 0.1 {
+      return "\(time) · \(Formatters.absoluteWatts(watts)) in"
+    }
+    return "\(time) · idle"
+  }
 }
 
 private struct MetricSummaryCard: View {
@@ -104,9 +122,9 @@ private struct MetricSummaryCard: View {
     HStack(spacing: 12) {
       Image(systemName: systemImage)
         .font(.system(size: 17, weight: .semibold))
-        .foregroundStyle(.white)
+        .foregroundStyle(tint)
         .frame(width: 36, height: 36)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
           RoundedRectangle(cornerRadius: 8, style: .continuous)
             .stroke(tint.opacity(0.35), lineWidth: 1)

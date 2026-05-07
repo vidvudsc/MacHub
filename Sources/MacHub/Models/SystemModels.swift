@@ -49,6 +49,7 @@ struct BatterySample: Identifiable, Equatable {
 struct PowerAppInfo: Equatable {
   var name: String
   var cpuPercent: Double
+  var memoryBytes: UInt64
   var estimatedWatts: Double?
 }
 
@@ -105,6 +106,15 @@ enum ActivityMetric: String, CaseIterable, Identifiable {
   case disk = "Disk"
 
   var id: String { rawValue }
+
+  var systemImage: String {
+    switch self {
+    case .cpu: "cpu"
+    case .memory: "memorychip"
+    case .network: "network"
+    case .disk: "internaldrive"
+    }
+  }
 }
 
 enum DashboardSection: String, CaseIterable, Identifiable {

@@ -123,7 +123,7 @@ private struct PowerAppRow: View {
       VStack(alignment: .trailing, spacing: 2) {
         Text(Formatters.estimatedWatts(app.estimatedWatts))
           .font(.headline.monospacedDigit())
-        Text(String(format: "%.0f%% CPU", app.cpuPercent))
+        Text("\(String(format: "%.0f%% CPU", app.cpuPercent)) · \(Formatters.memory(app.memoryBytes))")
           .font(.caption)
           .foregroundStyle(.secondary)
       }

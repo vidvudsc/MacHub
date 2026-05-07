@@ -49,8 +49,13 @@ struct MenuBarPanel: View {
 
       MenuSection {
         HStack {
-          Text("Network")
-            .font(.callout)
+          HStack(spacing: 8) {
+            Image(systemName: "network")
+              .foregroundStyle(MacHubTheme.purple)
+              .frame(width: 16)
+            Text("Network")
+          }
+          .font(.callout)
             .foregroundStyle(.secondary)
           Spacer()
           Sparkline(
@@ -65,9 +70,13 @@ struct MenuBarPanel: View {
 
       MenuSection {
         MetricLine(systemImage: "timer", title: "Time Left", value: Formatters.batteryTime(store.snapshot.battery))
-        PowerFlowPills(battery: store.snapshot.battery)
+        PowerFlowPills(battery: store.snapshot.battery, compact: true)
         if let topPowerApp = store.snapshot.topPowerApp {
-          MetricLine(systemImage: "bolt.fill", title: topPowerApp.name, value: Formatters.estimatedWatts(topPowerApp.estimatedWatts))
+          MetricLine(
+            systemImage: "bolt.fill",
+            title: topPowerApp.name,
+            value: topPowerApp.estimatedWatts.map(Formatters.estimatedWatts) ?? String(format: "%.0f%% CPU", topPowerApp.cpuPercent)
+          )
         }
       }
 
@@ -93,6 +102,9 @@ struct MenuBarPanel: View {
     .preferredColorScheme(.dark)
     .onAppear {
       Task { await store.refreshMetrics() }
+    }
+    .task {
+      await store.refreshBatteryOnly()
     }
   }
 }

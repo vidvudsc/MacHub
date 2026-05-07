@@ -24,7 +24,13 @@ struct ActivityMonitorPanel: View {
           .frame(minWidth: 330, maxWidth: .infinity, minHeight: 250)
 
         VStack(alignment: .leading, spacing: 12) {
-          ActivityValueBlock(title: metric.rawValue, value: primaryValue, detail: secondaryValue, tint: tint)
+          ActivityValueBlock(
+            title: metric.rawValue,
+            value: primaryValue,
+            detail: secondaryValue,
+            systemImage: metric.systemImage,
+            tint: tint
+          )
 
           ForEach(detailRows, id: \.0) { row in
             LabeledContent(row.0, value: row.1)
@@ -127,14 +133,15 @@ private struct ActivityValueBlock: View {
   let title: String
   let value: String
   let detail: String
+  let systemImage: String
   let tint: Color
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 8) {
-        Circle()
-          .fill(tint)
-          .frame(width: 8, height: 8)
+        Image(systemName: systemImage)
+          .foregroundStyle(tint)
+          .frame(width: 16)
         Text(title)
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)

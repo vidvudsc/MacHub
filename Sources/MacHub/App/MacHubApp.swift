@@ -13,7 +13,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       name: NSWorkspace.didActivateApplicationNotification,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(dashboardWindowWillMiniaturize(_:)),
+      name: NSWindow.willMiniaturizeNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(dashboardWindowWillClose(_:)),
+      name: NSWindow.willCloseNotification,
+      object: nil
+    )
     HotKeyManager.shared.registerWindowHotKeys()
+  }
+
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    false
+  }
+
+  func applicationWillHide(_ notification: Notification) {
+    AppVisibilityService.hideToMenuBar()
+  }
+
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    AppVisibilityService.showDashboard()
+    return true
   }
 
   @objc private func applicationActivated(_ notification: Notification) {
@@ -21,6 +46,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
     WindowManagerService.noteActivatedApplication(app)
+  }
+
+  @objc private func dashboardWindowWillMiniaturize(_ notification: Notification) {
+    guard isDashboardWindow(notification.object) else { return }
+    AppVisibilityService.hideToMenuBar()
+  }
+
+  @objc private func dashboardWindowWillClose(_ notification: Notification) {
+    guard isDashboardWindow(notification.object) else { return }
+    AppVisibilityService.hideToMenuBar()
+  }
+
+  private func isDashboardWindow(_ object: Any?) -> Bool {
+    guard let window = object as? NSWindow else { return false }
+    return window.title == "MacHub" && window.level == .normal
   }
 }
 
@@ -94,7 +134,10 @@ struct MacHubApp: App {
         await store.start()
       }
     } label: {
-      Image(systemName: store.menuBarSystemImage)
+      Image(systemName: "gauge.with.dots.needle.67percent")
+        .task {
+          await store.start()
+        }
     }
     .menuBarExtraStyle(.window)
   }

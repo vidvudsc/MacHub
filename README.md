@@ -1,6 +1,8 @@
 # MacHub
 
-MacHub is a native macOS utility dashboard built with SwiftUI. It combines live system monitoring, cleanup review, storage browsing, battery diagnostics, menu bar status, and quick window arrangement tools in one compact app.
+![MacHub full app](docs/screenshots/full.png)
+
+![MacHub menu bar](docs/screenshots/bestmenubar.png)
 
 ## Features
 
@@ -33,14 +35,14 @@ Create and launch the local `.app` bundle:
 script/build_and_run.sh
 ```
 
+Install or replace `/Applications/MacHub.app` with the current build:
+
+```bash
+script/build_and_run.sh --install
+```
+
 Verify that the app builds and launches:
 
 ```bash
 script/build_and_run.sh --verify
 ```
-
-## Notes
-
-MacHub estimates the top power-hungry app from process CPU usage and current battery draw when available. macOS does not expose exact per-app watts through the lightweight APIs used here, so those values are intentionally labeled as estimates.
-
-Reference screenshots copied from `~/Documents/screenshots/machub` are stored in `docs/screenshots/`.

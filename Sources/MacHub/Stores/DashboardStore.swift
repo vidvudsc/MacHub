@@ -18,18 +18,18 @@ final class DashboardStore: ObservableObject {
 
   private let metricsService = SystemMetricsService()
   private let scanner = FolderScanner()
-  private var timer: Timer?
-  private let refreshInterval: TimeInterval = 3
+  private var metricsRefreshTask: Task<Void, Never>?
+  private var metricsRefreshActivity: NSObjectProtocol?
+  private let metricsRefreshInterval: TimeInterval = 1.5
+  private var isRefreshingMetrics = false
   private var didStart = false
 
+  init() {
+    startAutoRefresh()
+  }
+
   var menuBarSystemImage: String {
-    if snapshot.battery.isPresent, snapshot.battery.isCharging {
-      return "bolt.fill"
-    }
-    if snapshot.cpuUsage > 0.75 || snapshot.memoryPressure > 0.82 {
-      return "exclamationmark.circle"
-    }
-    return "gauge.with.dots.needle.67percent"
+    "gauge.with.dots.needle.67percent"
   }
 
   var menuBarTitle: String {
@@ -41,19 +41,30 @@ final class DashboardStore: ObservableObject {
   }
 
   func startAutoRefresh() {
-    guard timer == nil else { return }
-    timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
-      Task { @MainActor in
-        await self?.refreshMetrics()
+    guard metricsRefreshTask == nil else { return }
+    metricsRefreshActivity = ProcessInfo.processInfo.beginActivity(
+      options: [.userInitiatedAllowingIdleSystemSleep],
+      reason: "Keep MacHub menu bar metrics current"
+    )
+    metricsRefreshTask = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        guard let self else { return }
+        await self.refreshMetrics()
+        do {
+          try await Task.sleep(nanoseconds: UInt64(self.metricsRefreshInterval * 1_000_000_000))
+        } catch {
+          return
+        }
       }
     }
-    timer?.tolerance = 0.6
   }
 
   func start() async {
-    guard !didStart else { return }
-    didStart = true
     startAutoRefresh()
+    guard !didStart else {
+      return
+    }
+    didStart = true
     await refreshMetrics()
     async let folders: Void = refreshFolders()
     async let cleanup: Void = refreshCleanupTargets()
@@ -70,9 +81,36 @@ final class DashboardStore: ObservableObject {
   }
 
   func refreshMetrics() async {
+    guard !isRefreshingMetrics else { return }
+    isRefreshingMetrics = true
+    defer { isRefreshingMetrics = false }
+
     snapshot = await metricsService.snapshot()
     appendHistory(from: snapshot)
     lastUpdated = Date()
+  }
+
+  func refreshBatteryOnly() async {
+    let battery = await metricsService.batterySnapshot()
+    snapshot.battery = battery
+    appendBatteryHistory(from: battery)
+    lastUpdated = Date()
+  }
+
+  func stopAutoRefresh() {
+    metricsRefreshTask?.cancel()
+    metricsRefreshTask = nil
+    if let metricsRefreshActivity {
+      ProcessInfo.processInfo.endActivity(metricsRefreshActivity)
+      self.metricsRefreshActivity = nil
+    }
+  }
+
+  deinit {
+    metricsRefreshTask?.cancel()
+    if let metricsRefreshActivity {
+      ProcessInfo.processInfo.endActivity(metricsRefreshActivity)
+    }
   }
 
   func refreshFolders() async {
@@ -161,14 +199,28 @@ final class DashboardStore: ObservableObject {
       history.removeFirst(history.count - 72)
     }
 
-    if snapshot.battery.isPresent {
+    appendBatteryHistory(from: snapshot.battery)
+  }
+
+  private func appendBatteryHistory(from battery: BatteryInfo) {
+    guard battery.isPresent else { return }
+    let now = Date()
+    if let last = batteryHistory.last, now.timeIntervalSince(last.date) < 1 {
+      batteryHistory[batteryHistory.count - 1] = BatterySample(
+        date: now,
+        percent: battery.percent,
+        watts: battery.watts
+      )
+    } else {
       batteryHistory.append(BatterySample(
-        percent: snapshot.battery.percent,
-        watts: snapshot.battery.watts
+        date: now,
+        percent: battery.percent,
+        watts: battery.watts
       ))
-      if batteryHistory.count > 240 {
-        batteryHistory.removeFirst(batteryHistory.count - 240)
-      }
+    }
+
+    if batteryHistory.count > 360 {
+      batteryHistory.removeFirst(batteryHistory.count - 360)
     }
   }
 

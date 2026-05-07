@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -39,7 +40,24 @@ struct ContentView: View {
     .buttonStyle(HubButtonStyle())
     .foregroundStyle(.primary)
     .background(MacHubTheme.windowBackground)
+    .background(DashboardWindowConfigurator())
     .preferredColorScheme(.dark)
+  }
+}
+
+private struct DashboardWindowConfigurator: NSViewRepresentable {
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    DispatchQueue.main.async {
+      AppVisibilityService.configureDashboardWindow(view.window)
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    DispatchQueue.main.async {
+      AppVisibilityService.configureDashboardWindow(nsView.window)
+    }
   }
 }
 
