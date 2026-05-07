@@ -82,6 +82,23 @@ struct MenuBarPanel: View {
       }
 
       VStack(spacing: 4) {
+        MenuToggleAction(
+          systemImage: store.isPreventingSleep ? "moon.zzz.fill" : "moon.zzz",
+          title: "Prevent Sleeping",
+          isOn: store.isPreventingSleep
+        ) { isOn in
+          store.setPreventSleep(isOn)
+        }
+        MenuToggleAction(
+          systemImage: "keyboard",
+          title: "Keyboard Cleaning",
+          isOn: store.isKeyboardCleaningEnabled
+        ) { isOn in
+          store.setKeyboardCleaning(isOn)
+        }
+      }
+
+      VStack(spacing: 4) {
         MenuAction(systemImage: "macwindow", title: "Open Dashboard") {
           dismiss()
           AppVisibilityService.closeMenuBarPanels()
@@ -171,6 +188,47 @@ private struct MiniMetric: View {
     .padding(11)
     .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
     .hubPanel()
+  }
+}
+
+private struct MenuToggleAction: View {
+  let systemImage: String
+  let title: String
+  let isOn: Bool
+  let action: (Bool) -> Void
+  @State private var isHovering = false
+
+  var body: some View {
+    Button {
+      action(!isOn)
+    } label: {
+      HStack(spacing: 10) {
+        Image(systemName: systemImage)
+          .frame(width: 18)
+        Text(title)
+        Spacer()
+        Toggle("", isOn: Binding(
+          get: { isOn },
+          set: action
+        ))
+        .labelsHidden()
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .allowsHitTesting(false)
+      }
+      .padding(.horizontal, 10)
+      .padding(.vertical, 8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        Color.white.opacity(isHovering ? 0.075 : 0.035),
+        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+      )
+      .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .scaleEffect(isHovering ? 1.018 : 1)
+    .animation(.spring(response: 0.18, dampingFraction: 0.82), value: isHovering)
+    .onHover { isHovering = $0 }
   }
 }
 

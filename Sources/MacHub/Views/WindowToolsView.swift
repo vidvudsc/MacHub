@@ -8,40 +8,16 @@ struct WindowToolsView: View {
   @State private var shortcutVersion = 0
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack(alignment: .top, spacing: 14) {
-        UtilityPanel {
-          PanelHeader(
-            title: "Front window",
-            detail: "Resize the frontmost app window with global shortcuts or one click."
-          )
-          Divider()
-          CompactMetricRow(title: "Accessibility", value: WindowManagerService.isAccessibilityTrusted ? "Enabled" : "Needed", systemImage: "hand.raised")
-          CompactMetricRow(title: "Hotkeys", value: "\(HotKeyManager.shared.registeredHotKeyCount)/\(WindowLayout.allCases.count)", systemImage: "keyboard")
-          Button {
-            WindowManagerService.requestAccessibilityPermission()
-            WindowManagerService.openAccessibilitySettings()
-          } label: {
-            Label("Accessibility Permission", systemImage: "hand.raised")
-          }
+    VStack(alignment: .leading, spacing: 12) {
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 12) {
+          frontWindowPanel
+            .frame(width: 320)
+          statusPanel
         }
-        .frame(width: 360)
-
-        UtilityPanel {
-          PanelHeader(title: "Status")
-          Text(status)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-          if !HotKeyManager.shared.registrationFailures.isEmpty {
-            Text(hotKeyFailureSummary)
-              .font(.callout)
-              .foregroundStyle(MacHubTheme.yellow)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          Text("Some apps block resizing, but most standard app windows should respond once Accessibility is enabled.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 12) {
+          frontWindowPanel
+          statusPanel
         }
       }
 
@@ -49,7 +25,7 @@ struct WindowToolsView: View {
         PanelHeader(title: "Window layouts", detail: "Double-click a layout to change its global shortcut.")
         Divider()
 
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], spacing: 8) {
           ForEach(WindowLayout.allCases) { layout in
             WindowLayoutTile(layout: layout)
               .id("\(layout.id)-\(shortcutVersion)")
@@ -112,24 +88,64 @@ struct WindowToolsView: View {
       .joined(separator: ", ")
     return "Some global shortcuts did not register: \(failed)"
   }
+
+  private var frontWindowPanel: some View {
+    UtilityPanel {
+      PanelHeader(
+        title: "Front window",
+        detail: "Resize the frontmost app window with global shortcuts or one click."
+      )
+      Divider()
+      CompactMetricRow(title: "Accessibility", value: WindowManagerService.isAccessibilityTrusted ? "Enabled" : "Needed", systemImage: "hand.raised")
+      CompactMetricRow(title: "Hotkeys", value: "\(HotKeyManager.shared.registeredHotKeyCount)/\(WindowLayout.allCases.count)", systemImage: "keyboard")
+      Button {
+        WindowManagerService.requestAccessibilityPermission()
+        WindowManagerService.openAccessibilitySettings()
+      } label: {
+        Label("Accessibility Permission", systemImage: "hand.raised")
+      }
+    }
+  }
+
+  private var statusPanel: some View {
+    UtilityPanel {
+      PanelHeader(title: "Status")
+      Text(status)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      if !HotKeyManager.shared.registrationFailures.isEmpty {
+        Text(hotKeyFailureSummary)
+          .font(.callout)
+          .foregroundStyle(MacHubTheme.yellow)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Text("Some apps block resizing, but most standard app windows should respond once Accessibility is enabled.")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
 }
 
 private struct WindowLayoutTile: View {
   let layout: WindowLayout
 
   var body: some View {
-    HStack(spacing: 12) {
+    HStack(spacing: 8) {
       Image(systemName: layout.systemImage)
         .foregroundStyle(.secondary)
-        .frame(width: 24)
+        .frame(width: 20)
       Text(layout.rawValue)
-        .font(.headline)
+        .font(.callout.weight(.semibold))
+        .lineLimit(1)
+        .minimumScaleFactor(0.82)
       Spacer()
       Text(layout.shortcutLabel)
-        .font(.callout.monospaced())
+        .font(.caption.monospaced())
         .foregroundStyle(.secondary)
     }
-    .padding(12)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 9)
     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     .overlay {

@@ -71,13 +71,13 @@ private struct TopBar: View {
   @ObservedObject var store: DashboardStore
 
   var body: some View {
-    HStack(spacing: 14) {
+    HStack(spacing: 10) {
       HStack(spacing: 8) {
         Text("MacHub")
           .font(.headline)
           .lineLimit(1)
       }
-      .padding(.leading, 60)
+      .padding(.leading, 42)
 
       Picker("Section", selection: $section) {
         ForEach(DashboardSection.allCases) { section in
@@ -87,7 +87,7 @@ private struct TopBar: View {
       }
       .pickerStyle(.segmented)
       .labelsHidden()
-      .frame(width: 420)
+      .frame(minWidth: 300, maxWidth: 420)
 
       Spacer()
 
@@ -99,15 +99,17 @@ private struct TopBar: View {
       Button {
         AppVisibilityService.hideToMenuBar()
       } label: {
-        Label("Hide to Menu Bar", systemImage: "menubar.rectangle")
+        Image(systemName: "menubar.rectangle")
       }
+      .help("Hide to Menu Bar")
 
       Button {
         Task { await store.refreshAll() }
       } label: {
-        Label("Refresh", systemImage: "arrow.clockwise")
+        Image(systemName: "arrow.clockwise")
       }
       .disabled(store.isRefreshing)
+      .help("Refresh")
     }
     .padding(.trailing, 12)
     .padding(.vertical, 10)

@@ -6,40 +6,35 @@ struct ActivityMonitorPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      HStack {
-        PanelHeader(title: "Live Activity", detail: store.lastUpdated.map { "Updated \($0.formatted(date: .omitted, time: .shortened))" } ?? "Updated just now")
-        Spacer()
-        Picker("Metric", selection: $metric) {
-          ForEach(ActivityMetric.allCases) { metric in
-            Text(metric.rawValue).tag(metric)
-          }
+      ViewThatFits(in: .horizontal) {
+        HStack {
+          activityHeader
+          Spacer()
+          metricPicker
+            .frame(width: 340)
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 360)
+
+        VStack(alignment: .leading, spacing: 10) {
+          activityHeader
+          metricPicker
+            .frame(maxWidth: 340)
+        }
       }
 
-      HStack(alignment: .top, spacing: 16) {
-        ActivityTrendChart(values: values, metric: metric)
-          .frame(minWidth: 330, maxWidth: .infinity, minHeight: 250)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 14) {
+          trendChart
+            .frame(minWidth: 300, maxWidth: .infinity, minHeight: 220)
+          detailBlock
+            .frame(width: 190, alignment: .topLeading)
+        }
 
         VStack(alignment: .leading, spacing: 12) {
-          ActivityValueBlock(
-            title: metric.rawValue,
-            value: primaryValue,
-            detail: secondaryValue,
-            systemImage: metric.systemImage,
-            tint: tint
-          )
-
-          ForEach(detailRows, id: \.0) { row in
-            LabeledContent(row.0, value: row.1)
-              .font(.callout)
-          }
+          trendChart
+            .frame(maxWidth: .infinity, minHeight: 200)
+          detailBlock
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(12)
-        .frame(width: 210, alignment: .topLeading)
-        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
       }
     }
     .padding(14)
@@ -65,6 +60,43 @@ struct ActivityMonitorPanel: View {
       return raw.map { min(max($0 / maxValue, 0.02), 1) }
     }
     return raw.map { min(max($0, 0.02), 1) }
+  }
+
+  private var activityHeader: some View {
+    PanelHeader(title: "Live Activity", detail: store.lastUpdated.map { "Updated \($0.formatted(date: .omitted, time: .shortened))" } ?? "Updated just now")
+  }
+
+  private var metricPicker: some View {
+    Picker("Metric", selection: $metric) {
+      ForEach(ActivityMetric.allCases) { metric in
+        Text(metric.rawValue).tag(metric)
+      }
+    }
+    .pickerStyle(.segmented)
+    .labelsHidden()
+  }
+
+  private var trendChart: some View {
+    ActivityTrendChart(values: values, metric: metric)
+  }
+
+  private var detailBlock: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      ActivityValueBlock(
+        title: metric.rawValue,
+        value: primaryValue,
+        detail: secondaryValue,
+        systemImage: metric.systemImage,
+        tint: tint
+      )
+
+      ForEach(detailRows, id: \.0) { row in
+        LabeledContent(row.0, value: row.1)
+          .font(.callout)
+      }
+    }
+    .padding(12)
+    .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
   private var primaryValue: String {

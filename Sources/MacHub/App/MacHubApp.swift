@@ -49,7 +49,7 @@ struct MacHubApp: App {
   var body: some Scene {
     WindowGroup("MacHub", id: "main") {
       ContentView(store: store)
-        .frame(minWidth: 980, minHeight: 680)
+        .frame(minWidth: 680, minHeight: 380)
         .task {
           await store.startDashboard()
         }
@@ -79,25 +79,37 @@ struct MacHubApp: App {
         }
         .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
 
-        Button("Top Half") {
-          Task { try? await WindowManagerService.apply(.topHalf) }
-        }
-        .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
-
-        Button("Bottom Half") {
-          Task { try? await WindowManagerService.apply(.bottomHalf) }
-        }
-        .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
-
-        Button("Maximize") {
+        Button("Full View") {
           Task { try? await WindowManagerService.apply(.maximize) }
         }
-        .keyboardShortcut("m", modifiers: [.command, .shift])
+        .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
 
         Button("Center") {
           Task { try? await WindowManagerService.apply(.center) }
         }
-        .keyboardShortcut("c", modifiers: [.command, .shift])
+        .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
+
+        Divider()
+
+        Button("Top Left") {
+          Task { try? await WindowManagerService.apply(.topLeft) }
+        }
+        .keyboardShortcut("q", modifiers: [.command, .shift])
+
+        Button("Top Right") {
+          Task { try? await WindowManagerService.apply(.topRight) }
+        }
+        .keyboardShortcut("w", modifiers: [.command, .shift])
+
+        Button("Bottom Left") {
+          Task { try? await WindowManagerService.apply(.bottomLeft) }
+        }
+        .keyboardShortcut("e", modifiers: [.command, .shift])
+
+        Button("Bottom Right") {
+          Task { try? await WindowManagerService.apply(.bottomRight) }
+        }
+        .keyboardShortcut("r", modifiers: [.command, .shift])
       }
     }
 

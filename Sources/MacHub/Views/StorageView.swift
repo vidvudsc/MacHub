@@ -29,21 +29,31 @@ struct StorageView: View {
         }
       }
 
-      HStack(alignment: .top, spacing: 14) {
-        UtilityPanel {
-          PanelHeader(title: "Starting points")
-          Divider()
-          ForEach(store.folders) { folder in
-            RootFolderRow(
-              folder: folder,
-              isSelected: store.currentFolder?.id == folder.id || store.folderPath.first?.id == folder.id,
-              action: { store.openRoot(folder) }
-            )
-          }
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 12) {
+          startingPointsPanel
+            .frame(width: 300)
+          FolderExplorer(store: store)
         }
-        .frame(width: 330)
 
-        FolderExplorer(store: store)
+        VStack(alignment: .leading, spacing: 12) {
+          startingPointsPanel
+          FolderExplorer(store: store)
+        }
+      }
+    }
+  }
+
+  private var startingPointsPanel: some View {
+    UtilityPanel {
+      PanelHeader(title: "Starting points")
+      Divider()
+      ForEach(store.folders) { folder in
+        RootFolderRow(
+          folder: folder,
+          isSelected: store.currentFolder?.id == folder.id || store.folderPath.first?.id == folder.id,
+          action: { store.openRoot(folder) }
+        )
       }
     }
   }

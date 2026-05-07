@@ -17,6 +17,10 @@ INFO_PLIST="$APP_CONTENTS/Info.plist"
 RESOURCES="$APP_CONTENTS/Resources"
 ICONSET="$DIST_DIR/MacHub.iconset"
 ICON_FILE="$RESOURCES/MacHub.icns"
+SIGN_IDENTITY_WAS_SET=0
+if [[ -n "${SIGN_IDENTITY+x}" ]]; then
+  SIGN_IDENTITY_WAS_SET=1
+fi
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 ALLOW_ADHOC_FALLBACK="${ALLOW_ADHOC_FALLBACK:-0}"
 
@@ -24,7 +28,10 @@ if [[ -z "$SIGN_IDENTITY" ]]; then
   SIGN_IDENTITY="$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null | /usr/bin/awk -F '"' '/Apple Development:/ { print $2; exit }')"
 fi
 if [[ -z "$SIGN_IDENTITY" ]]; then
-  SIGN_IDENTITY="-"
+  echo "error: no Apple Development signing identity found." >&2
+  echo "MacHub needs a stable signature so Accessibility and Input Monitoring permissions keep working." >&2
+  echo "Create/install a signing certificate, or explicitly run SIGN_IDENTITY=- only for throwaway builds." >&2
+  exit 1
 fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
@@ -73,6 +80,11 @@ build_icon
 
 sign_app() {
   if [[ "$SIGN_IDENTITY" == "-" ]]; then
+    if [[ "$SIGN_IDENTITY_WAS_SET" != "1" ]]; then
+      echo "error: refusing implicit ad-hoc signing." >&2
+      return 1
+    fi
+    echo "warning: ad-hoc signing MacHub. macOS Accessibility/Input Monitoring grants may stop matching this app." >&2
     /usr/bin/codesign --force --sign - "$APP_BUNDLE"
     return
   fi

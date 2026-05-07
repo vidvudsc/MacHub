@@ -95,10 +95,12 @@ extension WindowLayout {
     switch hotKeyIdentifier {
     case 1: self = .leftHalf
     case 2: self = .rightHalf
-    case 3: self = .topHalf
-    case 4: self = .bottomHalf
-    case 5: self = .maximize
-    case 6: self = .center
+    case 3: self = .maximize
+    case 4: self = .center
+    case 5: self = .topLeft
+    case 6: self = .topRight
+    case 7: self = .bottomLeft
+    case 8: self = .bottomRight
     default: return nil
     }
   }
@@ -107,10 +109,12 @@ extension WindowLayout {
     switch self {
     case .leftHalf: 1
     case .rightHalf: 2
-    case .topHalf: 3
-    case .bottomHalf: 4
-    case .maximize: 5
-    case .center: 6
+    case .maximize: 3
+    case .center: 4
+    case .topLeft: 5
+    case .topRight: 6
+    case .bottomLeft: 7
+    case .bottomRight: 8
     }
   }
 

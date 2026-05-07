@@ -8,18 +8,32 @@ struct BatteryView: View {
   }
 
   var body: some View {
-    HStack(alignment: .top, spacing: 14) {
-      UtilityPanel {
-        BatteryFactsCard(battery: battery)
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .top, spacing: 12) {
+        factsPanel
+          .frame(width: 280)
+        trendPanel
+          .frame(maxWidth: 520)
       }
-      .frame(width: 300)
 
-      UtilityPanel {
-        BatteryTrendCard(store: store)
+      VStack(alignment: .leading, spacing: 12) {
+        factsPanel
+        trendPanel
       }
-      .frame(maxWidth: 520)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var factsPanel: some View {
+    UtilityPanel {
+      BatteryFactsCard(battery: battery)
+    }
+  }
+
+  private var trendPanel: some View {
+    UtilityPanel {
+      BatteryTrendCard(store: store)
+    }
   }
 }
 

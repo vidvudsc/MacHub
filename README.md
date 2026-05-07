@@ -61,6 +61,7 @@ script/build_and_run.sh --verify
 ## Permissions
 
 - **Accessibility** is required for window snapping. MacHub uses the macOS Accessibility API to find the focused window and set its size and position.
+- **Accessibility** and, on some macOS versions, **Input Monitoring** are required for Keyboard Cleaning because it temporarily intercepts keyboard events.
 - **Full Disk Access** is required before MacHub scans protected folders such as Downloads, Documents, Desktop, and Library data.
 
-During development, `script/build_and_run.sh` signs the app with the first available Apple Development identity so macOS privacy permissions stay attached to the same `/Applications/MacHub.app` identity.
+During development, `script/build_and_run.sh` signs the app with the first available Apple Development identity so macOS privacy permissions stay attached to the same `/Applications/MacHub.app` identity. Avoid ad-hoc signing (`SIGN_IDENTITY=-`) except for throwaway builds; changing the signing identity can make System Settings show MacHub as enabled while macOS rejects the running binary. If that happens, remove MacHub from Accessibility/Input Monitoring, re-add `/Applications/MacHub.app`, then quit and relaunch MacHub.

@@ -15,6 +15,8 @@ final class DashboardStore: ObservableObject {
   @Published var isScanningFolders = false
   @Published var isScanningCurrentFolder = false
   @Published var hasFullDiskAccess = FullDiskAccessService.hasFullDiskAccess()
+  @Published var isPreventingSleep = PreventSleepService.shared.isEnabled
+  @Published var isKeyboardCleaningEnabled = KeyboardCleaningService.shared.isEnabled
   @Published var lastUpdated: Date?
 
   private let metricsService = SystemMetricsService()
@@ -205,6 +207,22 @@ final class DashboardStore: ObservableObject {
 
   func refreshPrivacyStatus() {
     hasFullDiskAccess = FullDiskAccessService.hasFullDiskAccess()
+  }
+
+  func togglePreventSleep() {
+    isPreventingSleep = PreventSleepService.shared.toggle()
+  }
+
+  func setPreventSleep(_ isEnabled: Bool) {
+    isPreventingSleep = PreventSleepService.shared.setEnabled(isEnabled)
+  }
+
+  func toggleKeyboardCleaning() {
+    isKeyboardCleaningEnabled = KeyboardCleaningService.shared.toggle()
+  }
+
+  func setKeyboardCleaning(_ isEnabled: Bool) {
+    isKeyboardCleaningEnabled = KeyboardCleaningService.shared.setEnabled(isEnabled)
   }
 
   func openRoot(_ folder: FolderUsage) {
