@@ -25,10 +25,6 @@ MacHub is a native macOS menu bar utility for keeping an eye on system health, b
 - Window tools for resizing the focused app via Accessibility APIs and editable global shortcuts.
 - Dock/menu bar behavior: dashboard launch shows the Dock icon, while Hide to Menu Bar tucks the app back into the menu bar.
 
-## Screenshots
-
-The README visuals are captured from the current MacHub UI and live in [docs/screenshots](docs/screenshots).
-
 ## Requirements
 
 - macOS 14 or later
