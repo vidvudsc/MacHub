@@ -29,17 +29,14 @@ struct StorageView: View {
         }
       }
 
-      ViewThatFits(in: .horizontal) {
+      ScrollView(.horizontal, showsIndicators: false) {
         HStack(alignment: .top, spacing: 12) {
           startingPointsPanel
             .frame(width: 300)
           FolderExplorer(store: store)
+            .frame(minWidth: 620, maxWidth: .infinity)
         }
-
-        VStack(alignment: .leading, spacing: 12) {
-          startingPointsPanel
-          FolderExplorer(store: store)
-        }
+        .frame(minWidth: 932, maxWidth: .infinity, alignment: .leading)
       }
     }
   }

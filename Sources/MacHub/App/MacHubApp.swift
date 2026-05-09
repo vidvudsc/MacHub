@@ -4,6 +4,13 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
+    PreventSleepService.shared.resetLidSleepOverrideForFreshLaunch()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+      PreventSleepService.shared.resetLidSleepOverrideForFreshLaunch()
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+      PreventSleepService.shared.resetLidSleepOverrideForFreshLaunch()
+    }
     if let frontmost = NSWorkspace.shared.frontmostApplication {
       WindowManagerService.noteActivatedApplication(frontmost)
     }
@@ -22,6 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     false
+  }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    PreventSleepService.shared.resetLidSleepOverrideForFreshLaunch()
   }
 
   func applicationWillHide(_ notification: Notification) {
@@ -123,6 +134,8 @@ struct MacHubApp: App {
       }
     } label: {
       Image(systemName: "gauge.with.dots.needle.67percent")
+        .symbolRenderingMode(.monochrome)
+        .foregroundStyle(.primary)
         .task {
           await store.start()
         }

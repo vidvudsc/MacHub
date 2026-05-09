@@ -16,6 +16,8 @@ final class DashboardStore: ObservableObject {
   @Published var isScanningCurrentFolder = false
   @Published var hasFullDiskAccess = FullDiskAccessService.hasFullDiskAccess()
   @Published var isPreventingSleep = PreventSleepService.shared.isEnabled
+  @Published var isLidSleepOverrideEnabled = false
+  @Published var isChangingLidSleepOverride = false
   @Published var isKeyboardCleaningEnabled = KeyboardCleaningService.shared.isEnabled
   @Published var lastUpdated: Date?
 
@@ -24,7 +26,7 @@ final class DashboardStore: ObservableObject {
   private var metricsRefreshTask: Task<Void, Never>?
   private var batteryRefreshTask: Task<Void, Never>?
   private var metricsRefreshActivity: NSObjectProtocol?
-  private static let metricsRefreshIntervalNanoseconds: UInt64 = 1_500_000_000
+  private static let metricsRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
   private static let batteryRefreshIntervalNanoseconds: UInt64 = 500_000_000
   private static let batteryHistorySampleInterval: TimeInterval = 60
   private static let batteryHistoryMaxSamples = 12 * 60
@@ -103,6 +105,7 @@ final class DashboardStore: ObservableObject {
     guard !didStartDashboardScans else { return }
     didStartDashboardScans = true
     refreshPrivacyStatus()
+    await refreshPowerStatus()
     guard hasFullDiskAccess else { return }
     async let folders: Void = refreshFolders()
     async let cleanup: Void = refreshCleanupTargets()
@@ -137,9 +140,10 @@ final class DashboardStore: ObservableObject {
     defer { isRefreshingBattery = false }
 
     let battery = await metricsService.batterySnapshot()
-    snapshot.battery = battery
+    if shouldPublishBatteryUpdate(from: snapshot.battery, to: battery) {
+      snapshot.battery = battery
+    }
     appendBatteryHistory(from: battery)
-    lastUpdated = Date()
   }
 
   func stopAutoRefresh() {
@@ -209,12 +213,28 @@ final class DashboardStore: ObservableObject {
     hasFullDiskAccess = FullDiskAccessService.hasFullDiskAccess()
   }
 
+  func refreshPowerStatus() async {
+    let isEnabled = PreventSleepService.shared.refreshLidSleepOverrideState()
+    isLidSleepOverrideEnabled = isEnabled
+  }
+
   func togglePreventSleep() {
     isPreventingSleep = PreventSleepService.shared.toggle()
   }
 
   func setPreventSleep(_ isEnabled: Bool) {
     isPreventingSleep = PreventSleepService.shared.setEnabled(isEnabled)
+  }
+
+  func toggleLidSleepOverride() async {
+    isLidSleepOverrideEnabled = await PreventSleepService.shared.toggleLidSleepOverride()
+  }
+
+  func setLidSleepOverride(_ isEnabled: Bool) async {
+    guard !isChangingLidSleepOverride else { return }
+    isChangingLidSleepOverride = true
+    defer { isChangingLidSleepOverride = false }
+    isLidSleepOverrideEnabled = await PreventSleepService.shared.setLidSleepOverride(isEnabled)
   }
 
   func toggleKeyboardCleaning() {
@@ -290,8 +310,12 @@ final class DashboardStore: ObservableObject {
     guard battery.isPresent else { return }
     let now = Date()
     if let last = batteryHistory.last, now.timeIntervalSince(last.date) < Self.batteryHistorySampleInterval {
-      batteryHistory[batteryHistory.count - 1].percent = battery.percent
-      batteryHistory[batteryHistory.count - 1].watts = battery.watts
+      guard abs(last.percent - battery.percent) >= 0.001 else { return }
+      batteryHistory[batteryHistory.count - 1] = BatterySample(
+        date: last.date,
+        percent: battery.percent,
+        watts: battery.watts
+      )
     } else {
       batteryHistory.append(BatterySample(
         date: now,
@@ -303,6 +327,26 @@ final class DashboardStore: ObservableObject {
     if batteryHistory.count > Self.batteryHistoryMaxSamples {
       batteryHistory.removeFirst(batteryHistory.count - Self.batteryHistoryMaxSamples)
     }
+  }
+
+  private func shouldPublishBatteryUpdate(from oldValue: BatteryInfo, to newValue: BatteryInfo) -> Bool {
+    oldValue.isPresent != newValue.isPresent
+      || oldValue.isCharging != newValue.isCharging
+      || oldValue.isPluggedIn != newValue.isPluggedIn
+      || oldValue.timeRemainingMinutes != newValue.timeRemainingMinutes
+      || oldValue.cycleCount != newValue.cycleCount
+      || oldValue.health != newValue.health
+      || abs(oldValue.percent - newValue.percent) >= 0.001
+      || roundedTenth(oldValue.watts) != roundedTenth(newValue.watts)
+      || roundedTenth(oldValue.externalWatts) != roundedTenth(newValue.externalWatts)
+      || roundedTenth(oldValue.systemWatts) != roundedTenth(newValue.systemWatts)
+      || roundedTenth(oldValue.voltage) != roundedTenth(newValue.voltage)
+      || roundedTenth(oldValue.amperage) != roundedTenth(newValue.amperage)
+      || roundedTenth(oldValue.temperature) != roundedTenth(newValue.temperature)
+  }
+
+  private func roundedTenth(_ value: Double?) -> Int? {
+    value.map { Int(($0 * 10).rounded()) }
   }
 
   func reveal(_ usage: FolderUsage) {

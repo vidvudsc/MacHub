@@ -375,6 +375,7 @@ struct Sparkline: View {
   let values: [Double]
   var tint: Color = MacHubTheme.green
   var showsFill = false
+  var fixedRange: ClosedRange<Double>?
 
   var body: some View {
     GeometryReader { proxy in
@@ -400,8 +401,8 @@ struct Sparkline: View {
   private func normalizedPoints(in size: CGSize) -> [CGPoint] {
     let samples = values.isEmpty ? [0.18, 0.22, 0.2, 0.26, 0.24, 0.3, 0.28] : values
     let drawableSamples = samples.count == 1 ? [samples[0], samples[0]] : samples
-    let minValue = drawableSamples.min() ?? 0
-    let maxValue = drawableSamples.max() ?? 1
+    let minValue = fixedRange?.lowerBound ?? drawableSamples.min() ?? 0
+    let maxValue = fixedRange?.upperBound ?? drawableSamples.max() ?? 1
     let step = drawableSamples.count > 1 ? size.width / CGFloat(drawableSamples.count - 1) : size.width
     let rawRange = maxValue - minValue
 

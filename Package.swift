@@ -11,8 +11,18 @@ let package = Package(
     .executable(name: "MacHub", targets: ["MacHub"])
   ],
   targets: [
+    .target(
+      name: "MacHubSMC",
+      swiftSettings: [
+        .unsafeFlags(["-Onone"], .when(configuration: .release))
+      ],
+      linkerSettings: [
+        .linkedFramework("IOKit")
+      ]
+    ),
     .executableTarget(
       name: "MacHub",
+      dependencies: ["MacHubSMC"],
       linkerSettings: [
         .linkedFramework("ApplicationServices"),
         .linkedFramework("AppKit"),

@@ -11,18 +11,11 @@ struct OverviewView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .top, spacing: 12) {
-          ActivityMonitorPanel(store: store, metric: $selectedMetric)
-            .frame(minWidth: 380, maxWidth: .infinity)
-          metricSummaryColumn
-            .frame(width: 310)
-        }
-
-        VStack(alignment: .leading, spacing: 12) {
-          ActivityMonitorPanel(store: store, metric: $selectedMetric)
-          metricSummaryColumn
-        }
+      HStack(alignment: .top, spacing: 12) {
+        ActivityMonitorPanel(store: store, metric: $selectedMetric)
+          .frame(minWidth: 380, maxWidth: .infinity)
+        metricSummaryColumn
+          .frame(width: 310)
       }
 
       HStack(alignment: .top, spacing: 14) {
@@ -180,7 +173,7 @@ private struct MetricSummaryCard: View {
               .lineLimit(1)
               .minimumScaleFactor(0.74)
             Spacer(minLength: 4)
-            Sparkline(values: values, tint: tint)
+            Sparkline(values: values, tint: tint, fixedRange: fixedRange)
               .frame(width: 92, height: 26)
           }
         }
@@ -194,5 +187,14 @@ private struct MetricSummaryCard: View {
     .scaleEffect(isHovering ? 1.025 : 1)
     .animation(.spring(response: 0.22, dampingFraction: 0.78), value: isHovering)
     .onHover { isHovering = $0 }
+  }
+
+  private var fixedRange: ClosedRange<Double>? {
+    switch title {
+    case "CPU", "RAM", "Battery":
+      0...1
+    default:
+      nil
+    }
   }
 }

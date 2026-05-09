@@ -5,6 +5,7 @@ MODE="${1:-run}"
 APP_NAME="MacHub"
 BUNDLE_ID="com.local.MacHub"
 MIN_SYSTEM_VERSION="14.0"
+BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -34,10 +35,16 @@ if [[ -z "$SIGN_IDENTITY" ]]; then
   exit 1
 fi
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+stop_app() {
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  pkill -f "$INSTALL_BUNDLE/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
+  pkill -f "$APP_BUNDLE/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
+}
 
-swift build
-BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"
+stop_app
+
+swift build -c "$BUILD_CONFIGURATION"
+BUILD_BINARY="$(swift build -c "$BUILD_CONFIGURATION" --show-bin-path)/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$RESOURCES"
@@ -143,7 +150,7 @@ open_app() {
 }
 
 install_app() {
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  stop_app
   rm -rf "$INSTALL_BUNDLE"
   /usr/bin/ditto "$APP_BUNDLE" "$INSTALL_BUNDLE"
 }

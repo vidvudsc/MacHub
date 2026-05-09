@@ -6,35 +6,18 @@ struct ActivityMonitorPanel: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      ViewThatFits(in: .horizontal) {
-        HStack {
-          activityHeader
-          Spacer()
-          metricPicker
-            .frame(width: 340)
-        }
-
-        VStack(alignment: .leading, spacing: 10) {
-          activityHeader
-          metricPicker
-            .frame(maxWidth: 340)
-        }
+      HStack {
+        activityHeader
+        Spacer()
+        metricPicker
+          .frame(width: 340)
       }
 
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .top, spacing: 14) {
-          trendChart
-            .frame(minWidth: 300, maxWidth: .infinity, minHeight: 220)
-          detailBlock
-            .frame(width: 190, alignment: .topLeading)
-        }
-
-        VStack(alignment: .leading, spacing: 12) {
-          trendChart
-            .frame(maxWidth: .infinity, minHeight: 200)
-          detailBlock
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
+      HStack(alignment: .top, spacing: 14) {
+        trendChart
+          .frame(minWidth: 300, maxWidth: .infinity, minHeight: 220)
+        detailBlock
+          .frame(width: 190, alignment: .topLeading)
       }
     }
     .padding(14)
@@ -67,13 +50,27 @@ struct ActivityMonitorPanel: View {
   }
 
   private var metricPicker: some View {
-    Picker("Metric", selection: $metric) {
+    HStack(spacing: 0) {
       ForEach(ActivityMetric.allCases) { metric in
-        Text(metric.rawValue).tag(metric)
+        Button {
+          self.metric = metric
+        } label: {
+          Text(metric.rawValue)
+            .font(.callout.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 7)
+            .foregroundStyle(self.metric == metric ? .white : .secondary)
+            .background(
+              self.metric == metric ? MacHubTheme.blue : Color.clear,
+              in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
       }
     }
-    .pickerStyle(.segmented)
-    .labelsHidden()
+    .padding(2)
+    .background(Color.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
   private var trendChart: some View {
@@ -214,7 +211,7 @@ private struct ActivityTrendChart: View {
         GeometryReader { proxy in
           ZStack {
             chartGrid
-            Sparkline(values: values, tint: tint, showsFill: true)
+            Sparkline(values: values, tint: tint, showsFill: true, fixedRange: fixedRange)
               .padding(.vertical, 8)
               .padding(.trailing, 2)
           }
@@ -271,6 +268,15 @@ private struct ActivityTrendChart: View {
     case .memory: MacHubTheme.blue
     case .network: MacHubTheme.purple
     case .disk: MacHubTheme.yellow
+    }
+  }
+
+  private var fixedRange: ClosedRange<Double>? {
+    switch metric {
+    case .cpu, .memory:
+      0...1
+    case .network, .disk:
+      nil
     }
   }
 }

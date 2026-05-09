@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import IOKit
 import IOKit.ps
+import MacHubSMC
 import Metal
 
 actor SystemMetricsService {
@@ -18,6 +19,7 @@ actor SystemMetricsService {
   private var isRefreshingSlowMetrics = false
   private var lastSlowMetricsRefresh: Date?
   private let slowMetricsInterval: TimeInterval = 10
+  private let batteryDetailsCacheInterval: TimeInterval = 10
 
   func batterySnapshot() async -> BatteryInfo {
     await batteryInfo()
@@ -176,6 +178,10 @@ actor SystemMetricsService {
   }
 
   private func smartBatteryDetails() async -> BatteryDetails {
+    if let cachedBatteryDetails, Date().timeIntervalSince(cachedBatteryDetails.date) < batteryDetailsCacheInterval {
+      return cachedBatteryDetails.details
+    }
+
     let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
     guard service != IO_OBJECT_NULL else {
       return cachedBatteryDetails?.details ?? BatteryDetails()

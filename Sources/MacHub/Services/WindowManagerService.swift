@@ -224,33 +224,44 @@ enum WindowManagerService {
 
   private static func driveSize(_ target: CGSize, on window: AXUIElement) async throws -> CGSize {
     var latestSize = currentFrame(of: window)?.size ?? target
-    var previousError = sizeError(latestSize, target: target)
+    var bestSize = latestSize
+    var bestError = sizeError(latestSize, target: target)
+    var previousSize = latestSize
+    var previousError = bestError
     var stagnantAttempts = 0
 
-    for _ in 0..<12 {
+    for _ in 0..<8 {
       try setSize(target, on: window)
       try? await Task.sleep(nanoseconds: 55_000_000)
       guard let size = currentFrame(of: window)?.size else { continue }
       latestSize = size
+      let error = sizeError(size, target: target)
+
+      if error < bestError {
+        bestSize = size
+        bestError = error
+      }
 
       if isSize(size, closeTo: target) {
         return size
       }
 
-      let error = sizeError(size, target: target)
-      if error >= previousError - 2 {
+      let sizeDelta = abs(size.width - previousSize.width) + abs(size.height - previousSize.height)
+      if sizeDelta <= 2 && error >= previousError - 2 {
         stagnantAttempts += 1
       } else {
         stagnantAttempts = 0
       }
+
+      previousSize = size
       previousError = error
 
-      if stagnantAttempts >= 3 {
-        return size
+      if stagnantAttempts >= 2 {
+        return bestError <= error ? bestSize : size
       }
     }
 
-    return latestSize
+    return bestError < sizeError(latestSize, target: target) ? bestSize : latestSize
   }
 
   private static func sizeError(_ size: CGSize, target: CGSize) -> CGFloat {

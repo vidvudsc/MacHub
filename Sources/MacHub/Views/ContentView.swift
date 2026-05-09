@@ -51,18 +51,33 @@ struct ContentView: View {
 }
 
 private struct DashboardWindowConfigurator: NSViewRepresentable {
+  final class Coordinator {
+    weak var configuredWindow: NSWindow?
+  }
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
     DispatchQueue.main.async {
-      AppVisibilityService.configureDashboardWindow(view.window)
+      configureIfNeeded(view.window, context: context)
     }
     return view
   }
 
   func updateNSView(_ nsView: NSView, context: Context) {
+    guard context.coordinator.configuredWindow !== nsView.window else { return }
     DispatchQueue.main.async {
-      AppVisibilityService.configureDashboardWindow(nsView.window)
+      configureIfNeeded(nsView.window, context: context)
     }
+  }
+
+  private func configureIfNeeded(_ window: NSWindow?, context: Context) {
+    guard let window, context.coordinator.configuredWindow !== window else { return }
+    AppVisibilityService.configureDashboardWindow(window)
+    context.coordinator.configuredWindow = window
   }
 }
 
@@ -79,15 +94,28 @@ private struct TopBar: View {
       }
       .padding(.leading, 42)
 
-      Picker("Section", selection: $section) {
+      HStack(spacing: 0) {
         ForEach(DashboardSection.allCases) { section in
-          Text(section.rawValue)
-            .tag(section)
+          Button {
+            self.section = section
+          } label: {
+            Text(section.rawValue)
+              .font(.callout.weight(.semibold))
+              .lineLimit(1)
+              .padding(.horizontal, 16)
+              .padding(.vertical, 7)
+              .foregroundStyle(self.section == section ? .white : .secondary)
+              .background(
+                self.section == section ? MacHubTheme.blue : Color.clear,
+                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+              )
+          }
+          .buttonStyle(.plain)
         }
       }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-      .frame(minWidth: 300, maxWidth: 420)
+      .padding(2)
+      .background(Color.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+      .frame(width: 420)
 
       Spacer()
 

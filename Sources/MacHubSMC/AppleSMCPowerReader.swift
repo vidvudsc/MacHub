@@ -3,24 +3,32 @@ import IOKit
 
 // Read-only AppleSMC access adapted from the MIT-licensed SMCKit/BatFi SMC
 // struct contract. MacHub only reads telemetry keys; it never writes SMC state.
-struct SMCPowerDistribution: Equatable {
-  var batteryPower: Double
-  var externalPower: Double
-  var systemPower: Double
+public struct SMCPowerDistribution: Equatable {
+  public var batteryPower: Double
+  public var externalPower: Double
+  public var systemPower: Double
+
+  public init(batteryPower: Double, externalPower: Double, systemPower: Double) {
+    self.batteryPower = batteryPower
+    self.externalPower = externalPower
+    self.systemPower = systemPower
+  }
 }
 
-final class AppleSMCPowerReader {
+public final class AppleSMCPowerReader {
   private var connection: io_connect_t = 0
+
+  public init() {}
 
   deinit {
     close()
   }
 
-  func powerDistribution() throws -> SMCPowerDistribution {
+  public func powerDistribution() throws -> SMCPowerDistribution {
     try openIfNeeded()
     let batteryPower = try readFloat(key: "SBAP")
     let externalPower = try readFloat(key: "PDTR")
-    let systemPower = (try? readFloat(key: "PSTR")) ?? batteryPower + externalPower
+    let systemPower = batteryPower + externalPower
     return SMCPowerDistribution(
       batteryPower: normalizedPower(batteryPower),
       externalPower: max(normalizedPower(externalPower), 0),
