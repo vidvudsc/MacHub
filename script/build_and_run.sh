@@ -8,6 +8,8 @@ MIN_SYSTEM_VERSION="14.0"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_VERSION="${APP_VERSION:-1.0.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-$(git -C "$ROOT_DIR" rev-list --count HEAD 2>/dev/null || echo 1)}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 INSTALL_BUNDLE="/Applications/$APP_NAME.app"
@@ -129,6 +131,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$BUILD_NUMBER</string>
   <key>CFBundleIconFile</key>
   <string>MacHub</string>
   <key>CFBundlePackageType</key>

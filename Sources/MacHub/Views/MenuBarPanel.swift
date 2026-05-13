@@ -125,7 +125,7 @@ struct MenuBarPanel: View {
         }
       }
 
-      Text("Version 1.0.0")
+      Text(menuVersion)
         .font(.caption)
         .foregroundStyle(.tertiary)
         .frame(maxWidth: .infinity)
@@ -144,6 +144,19 @@ struct MenuBarPanel: View {
     .task {
       await store.refreshBatteryOnly()
     }
+  }
+
+  private var menuVersion: String {
+    guard
+      let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+      !version.isEmpty
+    else {
+      return "Version unknown"
+    }
+    if let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String, !build.isEmpty {
+      return "Version \(version) (\(build))"
+    }
+    return "Version \(version)"
   }
 }
 

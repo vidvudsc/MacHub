@@ -80,6 +80,12 @@ private enum WindowVerticalAnchor {
   case bottom
 }
 
+private struct WindowTargetScreen {
+  let screen: NSScreen
+  let axFrame: CGRect
+  let axVisibleFrame: CGRect
+}
+
 struct WindowShortcut: Codable, Equatable {
   var keyCode: UInt32
   var modifiers: UInt32
@@ -166,10 +172,10 @@ enum WindowManagerService {
     guard let window = focusedTargetWindow() ?? fallbackTargetWindow() else {
       throw WindowError.noFocusedWindow
     }
-    guard let screen = activeScreen() else {
+    guard let targetScreen = targetScreen(containing: window) ?? activeTargetScreen() else {
       throw WindowError.noFocusedWindow
     }
-    let targetFrame = frame(for: layout, visibleFrame: screen.visibleFrame)
+    let targetFrame = frame(for: layout, visibleFrame: targetScreen.axVisibleFrame)
 
     guard isAttributeSettable(kAXSizeAttribute as CFString, on: window),
           isAttributeSettable(kAXPositionAttribute as CFString, on: window) else {
@@ -178,42 +184,50 @@ enum WindowManagerService {
 
     AXUIElementSetMessagingTimeout(window, 1.0)
 
-    try await setAnchoredFrame(targetFrame, layout: layout, on: screen, window: window)
+    try await setAnchoredFrame(targetFrame, layout: layout, on: targetScreen, window: window)
     try await Task.sleep(nanoseconds: 90_000_000)
-    if !isFrame(window, closeTo: expectedAccessibilityFrame(for: layout, targetFrame: targetFrame, screen: screen, window: window)) {
-      try await setAnchoredFrame(targetFrame, layout: layout, on: screen, window: window)
+    if !isFrame(window, closeTo: expectedAccessibilityFrame(for: layout, targetFrame: targetFrame, targetScreen: targetScreen, window: window)) {
+      try await setAnchoredFrame(targetFrame, layout: layout, on: targetScreen, window: window)
       try await Task.sleep(nanoseconds: 90_000_000)
     }
-    if !isFrame(window, closeTo: expectedAccessibilityFrame(for: layout, targetFrame: targetFrame, screen: screen, window: window)) {
-      try await setAnchoredFrame(targetFrame, layout: layout, on: screen, window: window)
+    if !isFrame(window, closeTo: expectedAccessibilityFrame(for: layout, targetFrame: targetFrame, targetScreen: targetScreen, window: window)) {
+      try await setAnchoredFrame(targetFrame, layout: layout, on: targetScreen, window: window)
     }
   }
 
   private static func expectedAccessibilityFrame(
     for layout: WindowLayout,
     targetFrame: CGRect,
-    screen: NSScreen,
+    targetScreen: WindowTargetScreen,
     window: AXUIElement
   ) -> CGRect {
     let actualSize = currentFrame(of: window)?.size ?? targetFrame.size
-    let anchoredFrame = anchoredFrame(for: layout, targetFrame: targetFrame, actualSize: actualSize)
-    return accessibilityFrame(for: anchoredFrame, on: screen)
+    return constrainedFrame(
+      anchoredFrame(for: layout, targetFrame: targetFrame, actualSize: actualSize),
+      to: targetScreen.axVisibleFrame
+    )
   }
 
-  private static func setAnchoredFrame(_ targetFrame: CGRect, layout: WindowLayout, on screen: NSScreen, window: AXUIElement) async throws {
+  private static func setAnchoredFrame(_ targetFrame: CGRect, layout: WindowLayout, on targetScreen: WindowTargetScreen, window: AXUIElement) async throws {
     if shouldPrepositionForGrowth(window: window, targetSize: targetFrame.size) {
-      try setPosition(accessibilityFrame(for: targetFrame, on: screen).origin, on: window)
+      try setPosition(targetFrame.origin, on: window)
       try await Task.sleep(nanoseconds: 25_000_000)
     }
 
     let actualSize = try await driveSize(targetFrame.size, on: window)
-    let firstAnchoredFrame = anchoredFrame(for: layout, targetFrame: targetFrame, actualSize: actualSize)
-    try setPosition(accessibilityFrame(for: firstAnchoredFrame, on: screen).origin, on: window)
+    let firstAnchoredFrame = constrainedFrame(
+      anchoredFrame(for: layout, targetFrame: targetFrame, actualSize: actualSize),
+      to: targetScreen.axVisibleFrame
+    )
+    try setPosition(firstAnchoredFrame.origin, on: window)
     try await Task.sleep(nanoseconds: 35_000_000)
 
     let finalSize = currentFrame(of: window)?.size ?? actualSize
-    let finalAnchoredFrame = anchoredFrame(for: layout, targetFrame: targetFrame, actualSize: finalSize)
-    try setPosition(accessibilityFrame(for: finalAnchoredFrame, on: screen).origin, on: window)
+    let finalAnchoredFrame = constrainedFrame(
+      anchoredFrame(for: layout, targetFrame: targetFrame, actualSize: finalSize),
+      to: targetScreen.axVisibleFrame
+    )
+    try setPosition(finalAnchoredFrame.origin, on: window)
   }
 
   private static func shouldPrepositionForGrowth(window: AXUIElement, targetSize: CGSize) -> Bool {
@@ -405,23 +419,61 @@ enum WindowManagerService {
     return status == .success && settable.boolValue
   }
 
-  private static func activeScreen() -> NSScreen? {
+  private static func activeTargetScreen() -> WindowTargetScreen? {
     guard let mouseLocation = CGEvent(source: nil)?.location else {
-      return NSScreen.main ?? NSScreen.screens.first
+      return (NSScreen.main ?? NSScreen.screens.first).flatMap(targetScreen(for:))
     }
 
-    return NSScreen.screens.first { screen in
-      screen.frame.contains(mouseLocation)
-    } ?? NSScreen.main ?? NSScreen.screens.first
+    return NSScreen.screens
+      .compactMap(targetScreen(for:))
+      .first { $0.axFrame.contains(mouseLocation) }
+      ?? (NSScreen.main ?? NSScreen.screens.first).flatMap(targetScreen(for:))
   }
 
-  private static func accessibilityFrame(for frame: CGRect, on screen: NSScreen) -> CGRect {
-    CGRect(
-      x: frame.minX,
-      y: screen.frame.maxY - frame.maxY,
-      width: frame.width,
-      height: frame.height
+  private static func targetScreen(containing window: AXUIElement) -> WindowTargetScreen? {
+    guard let frame = currentFrame(of: window) else { return nil }
+
+    let rankedScreens = NSScreen.screens.compactMap { screen -> (targetScreen: WindowTargetScreen, area: CGFloat)? in
+      guard let targetScreen = targetScreen(for: screen) else { return nil }
+      let intersection = frame.intersection(targetScreen.axFrame)
+      guard !intersection.isNull else { return nil }
+      return (targetScreen, intersection.width * intersection.height)
+    }
+
+    if let best = rankedScreens.max(by: { $0.area < $1.area }), best.area > 0 {
+      return best.targetScreen
+    }
+
+    let center = CGPoint(x: frame.midX, y: frame.midY)
+    return NSScreen.screens
+      .compactMap(targetScreen(for:))
+      .first { $0.axFrame.contains(center) }
+  }
+
+  private static func targetScreen(for screen: NSScreen) -> WindowTargetScreen? {
+    guard
+      let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+    else {
+      return nil
+    }
+
+    let displayID = CGDirectDisplayID(screenNumber.uint32Value)
+    let axFrame = CGDisplayBounds(displayID)
+    guard !axFrame.isNull, axFrame.width > 0, axFrame.height > 0 else { return nil }
+
+    let appKitFrame = screen.frame
+    let visibleFrame = screen.visibleFrame
+    let leftInset = max(visibleFrame.minX - appKitFrame.minX, 0)
+    let rightInset = max(appKitFrame.maxX - visibleFrame.maxX, 0)
+    let topInset = max(appKitFrame.maxY - visibleFrame.maxY, 0)
+    let bottomInset = max(visibleFrame.minY - appKitFrame.minY, 0)
+    let axVisibleFrame = CGRect(
+      x: axFrame.minX + leftInset,
+      y: axFrame.minY + topInset,
+      width: max(axFrame.width - leftInset - rightInset, 1),
+      height: max(axFrame.height - topInset - bottomInset, 1)
     )
+    return WindowTargetScreen(screen: screen, axFrame: axFrame, axVisibleFrame: axVisibleFrame)
   }
 
   private static func anchoredFrame(for layout: WindowLayout, targetFrame: CGRect, actualSize: CGSize) -> CGRect {
@@ -446,6 +498,24 @@ enum WindowManagerService {
     }
 
     return CGRect(origin: CGPoint(x: x, y: y), size: actualSize)
+  }
+
+  private static func constrainedFrame(_ frame: CGRect, to bounds: CGRect) -> CGRect {
+    let x: CGFloat
+    if frame.width >= bounds.width {
+      x = bounds.minX
+    } else {
+      x = min(max(frame.minX, bounds.minX), bounds.maxX - frame.width)
+    }
+
+    let y: CGFloat
+    if frame.height >= bounds.height {
+      y = bounds.minY
+    } else {
+      y = min(max(frame.minY, bounds.minY), bounds.maxY - frame.height)
+    }
+
+    return CGRect(origin: CGPoint(x: x, y: y), size: frame.size)
   }
 
   private static func frame(for layout: WindowLayout, visibleFrame: CGRect) -> CGRect {

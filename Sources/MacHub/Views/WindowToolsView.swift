@@ -3,22 +3,13 @@ import Carbon
 import SwiftUI
 
 struct WindowToolsView: View {
-  @State private var status = "Ready"
   @State private var recordingLayout: WindowLayout?
   @State private var shortcutVersion = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .top, spacing: 12) {
-          frontWindowPanel
-            .frame(width: 320)
-          statusPanel
-        }
-        VStack(alignment: .leading, spacing: 12) {
-          frontWindowPanel
-          statusPanel
-        }
+      if !WindowManagerService.isAccessibilityTrusted {
+        accessibilityPanel
       }
 
       UtilityPanel {
@@ -51,14 +42,12 @@ struct WindowToolsView: View {
           WindowShortcutStore.shared.resetShortcut(for: layout)
           HotKeyManager.shared.reloadWindowHotKeys()
           shortcutVersion += 1
-          status = "Reset \(layout.rawValue) to \(layout.shortcutLabel)."
           recordingLayout = nil
         },
         onRecord: { shortcut in
           WindowShortcutStore.shared.setShortcut(shortcut, for: layout)
           HotKeyManager.shared.reloadWindowHotKeys()
           shortcutVersion += 1
-          status = "Updated \(layout.rawValue) to \(shortcut.displayLabel)."
           recordingLayout = nil
         }
       )
@@ -68,63 +57,29 @@ struct WindowToolsView: View {
   private func apply(_ layout: WindowLayout) async {
     do {
       try await WindowManagerService.apply(layout)
-      status = "Applied \(layout.rawValue)."
     } catch WindowManagerService.WindowError.accessibilityPermissionMissing {
-      status = "Enable MacHub in System Settings > Privacy & Security > Accessibility."
+      WindowManagerService.requestAccessibilityPermission()
     } catch WindowManagerService.WindowError.noFrontmostApplication {
-      status = "No target app found. Click the app window you want to resize, then try again."
     } catch WindowManagerService.WindowError.noFocusedWindow {
-      status = "The target app did not report a focused window."
     } catch WindowManagerService.WindowError.cannotMoveWindow(let position, let size) {
-      status = "macOS refused the resize. AX position \(position.rawValue), size \(size.rawValue). Try a normal non-full-screen window."
+      _ = (position, size)
     } catch {
-      status = "Could not resize the front window. Some apps block window control."
     }
   }
 
-  private var hotKeyFailureSummary: String {
-    let failed = HotKeyManager.shared.registrationFailures
-      .map { "\($0.layout.rawValue) \($0.shortcut.displayLabel): \($0.status)" }
-      .joined(separator: ", ")
-    return "Some global shortcuts did not register: \(failed)"
-  }
-
-  private var frontWindowPanel: some View {
+  private var accessibilityPanel: some View {
     UtilityPanel {
       PanelHeader(
-        title: "Front window",
-        detail: "Resize the frontmost app window with global shortcuts or one click."
+        title: "Accessibility needed",
+        detail: "Enable MacHub in Privacy & Security before window shortcuts can resize other apps."
       )
       Divider()
-      CompactMetricRow(title: "Hotkeys", value: "\(HotKeyManager.shared.registeredHotKeyCount)/\(WindowLayout.allCases.count)", systemImage: "keyboard")
-      if !WindowManagerService.isAccessibilityTrusted {
-        CompactMetricRow(title: "Accessibility", value: "Needed", systemImage: "hand.raised")
-        Button {
-          WindowManagerService.requestAccessibilityPermission()
-          WindowManagerService.openAccessibilitySettings()
-        } label: {
-          Label("Accessibility Permission", systemImage: "hand.raised")
-        }
+      Button {
+        WindowManagerService.requestAccessibilityPermission()
+        WindowManagerService.openAccessibilitySettings()
+      } label: {
+        Label("Accessibility Permission", systemImage: "hand.raised")
       }
-    }
-  }
-
-  private var statusPanel: some View {
-    UtilityPanel {
-      PanelHeader(title: "Status")
-      Text(status)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      if !HotKeyManager.shared.registrationFailures.isEmpty {
-        Text(hotKeyFailureSummary)
-          .font(.callout)
-          .foregroundStyle(MacHubTheme.yellow)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      Text("Some apps block resizing, but most standard app windows should respond once Accessibility is enabled.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
     }
   }
 }

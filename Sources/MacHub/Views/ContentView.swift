@@ -103,9 +103,8 @@ private struct TopBar: View {
               .font(.callout.weight(.semibold))
               .lineLimit(1)
               .minimumScaleFactor(0.82)
-              .frame(maxWidth: .infinity)
+              .frame(maxWidth: .infinity, minHeight: 30)
               .padding(.horizontal, 12)
-              .padding(.vertical, 7)
               .foregroundStyle(self.section == section ? .white : .secondary)
               .background(
                 self.section == section ? MacHubTheme.blue : Color.clear,
@@ -114,6 +113,7 @@ private struct TopBar: View {
               .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
           }
           .frame(maxWidth: .infinity)
+          .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
           .buttonStyle(.plain)
         }
       }

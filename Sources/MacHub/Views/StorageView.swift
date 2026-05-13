@@ -188,24 +188,37 @@ private struct FolderExplorer: View {
           Button {
             Task { await store.drillInto(child) }
           } label: {
-            Label(child.isDirectory ? "Dive In" : "Open", systemImage: child.isDirectory ? "chevron.right" : "arrow.up.right.square")
+            StorageActionLabel(
+              title: child.isDirectory ? "Dive In" : "Open",
+              systemImage: child.isDirectory ? "chevron.right" : "arrow.up.right.square"
+            )
           }
           .disabled(store.isScanningCurrentFolder)
 
           Button {
             store.reveal(child)
           } label: {
-            Label("Reveal", systemImage: "magnifyingglass")
+            StorageActionLabel(title: "Reveal", systemImage: "magnifyingglass")
           }
 
           Button(role: .destructive) {
             store.moveToTrash(child)
           } label: {
-            Label("Trash", systemImage: "trash")
+            StorageActionLabel(title: "Trash", systemImage: "trash")
           }
         }
       }
     }
+  }
+}
+
+private struct StorageActionLabel: View {
+  let title: String
+  let systemImage: String
+
+  var body: some View {
+    Label(title, systemImage: systemImage)
+      .frame(width: 82, alignment: .center)
   }
 }
 

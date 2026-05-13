@@ -144,49 +144,53 @@ private struct MetricSummaryCard: View {
 
   var body: some View {
     Button(action: action) {
-      HStack(spacing: 12) {
-        Image(systemName: systemImage)
-          .font(.system(size: 17, weight: .semibold))
-          .foregroundStyle(tint)
-          .frame(width: 36, height: 36)
-          .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-          .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-              .stroke(tint.opacity(0.35), lineWidth: 1)
-          }
-
-        VStack(alignment: .leading, spacing: 5) {
-          HStack(alignment: .firstTextBaseline) {
-            Text(title)
-              .font(.headline)
-            Spacer()
-            Text(value)
-              .font(.headline.monospacedDigit())
-              .lineLimit(1)
-              .minimumScaleFactor(0.66)
-          }
-
-          HStack(spacing: 10) {
-            Text(subtitle)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
-              .minimumScaleFactor(0.74)
-            Spacer(minLength: 4)
-            Sparkline(values: values, tint: tint, fixedRange: fixedRange)
-              .frame(width: 92, height: 26)
-          }
-        }
-      }
-      .contentShape(Rectangle())
+      cardContent
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+        .hubPanel()
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     .buttonStyle(.plain)
-    .padding(12)
-    .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
-    .hubPanel()
     .scaleEffect(isHovering ? 1.025 : 1)
     .animation(.spring(response: 0.22, dampingFraction: 0.78), value: isHovering)
     .onHover { isHovering = $0 }
+  }
+
+  private var cardContent: some View {
+    HStack(spacing: 12) {
+      Image(systemName: systemImage)
+        .font(.system(size: 17, weight: .semibold))
+        .foregroundStyle(tint)
+        .frame(width: 36, height: 36)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(tint.opacity(0.35), lineWidth: 1)
+        }
+
+      VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .firstTextBaseline) {
+          Text(title)
+            .font(.headline)
+          Spacer()
+          Text(value)
+            .font(.headline.monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.66)
+        }
+
+        HStack(spacing: 10) {
+          Text(subtitle)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.74)
+          Spacer(minLength: 4)
+          Sparkline(values: values, tint: tint, fixedRange: fixedRange)
+            .frame(width: 92, height: 26)
+        }
+      }
+    }
   }
 
   private var fixedRange: ClosedRange<Double>? {

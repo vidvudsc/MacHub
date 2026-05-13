@@ -204,10 +204,7 @@ struct UtilityListRow<Actions: View>: View {
   @ViewBuilder var actions: Actions
 
   var body: some View {
-    ViewThatFits(in: .horizontal) {
-      horizontalRow
-      compactRow
-    }
+    horizontalRow
     .padding(10)
     .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     .overlay(alignment: .bottom) {
@@ -222,25 +219,10 @@ struct UtilityListRow<Actions: View>: View {
     HStack(spacing: 12) {
       icon
       titleBlock
+        .frame(maxWidth: .infinity, alignment: .leading)
       Spacer()
       valueText
       actions
-    }
-  }
-
-  private var compactRow: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 12) {
-        icon
-        titleBlock
-        Spacer()
-        valueText
-      }
-
-      HStack {
-        Spacer()
-        actions
-      }
     }
   }
 
