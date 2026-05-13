@@ -29,14 +29,11 @@ struct StorageView: View {
         }
       }
 
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(alignment: .top, spacing: 12) {
-          startingPointsPanel
-            .frame(width: 300)
-          FolderExplorer(store: store)
-            .frame(minWidth: 620, maxWidth: .infinity)
-        }
-        .frame(minWidth: 932, maxWidth: .infinity, alignment: .leading)
+      HStack(alignment: .top, spacing: 12) {
+        startingPointsPanel
+          .frame(width: 280)
+        FolderExplorer(store: store)
+          .frame(minWidth: 0, maxWidth: .infinity)
       }
     }
   }
@@ -80,48 +77,75 @@ private struct FolderExplorer: View {
 
   private func explorerHeader(_ folder: FolderUsage) -> some View {
     VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        PanelHeader(title: folder.name, detail: folder.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-        Spacer()
-        Button {
-          Task { await store.goUp() }
-        } label: {
-          Label("Up", systemImage: "chevron.up")
-        }
-        .disabled(store.folderPath.count <= 1 || store.isScanningCurrentFolder)
-
-        Button {
-          Task { await store.scanCurrentFolder() }
-        } label: {
-          Label("Rescan", systemImage: "arrow.clockwise")
-        }
-        .disabled(store.isScanningCurrentFolder)
-
-        Button {
-          store.open(folder)
-        } label: {
-          Label("Open", systemImage: "folder")
+      ViewThatFits(in: .horizontal) {
+        HStack {
+          PanelHeader(title: folder.name, detail: folder.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+          Spacer(minLength: 12)
+          explorerActions(folder)
         }
 
-        Button {
-          store.reveal(folder)
-        } label: {
-          Label("Reveal", systemImage: "magnifyingglass")
+        VStack(alignment: .leading, spacing: 10) {
+          PanelHeader(title: folder.name, detail: folder.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+          explorerActions(folder)
         }
       }
 
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 6) {
+      ViewThatFits(in: .horizontal) {
+        breadcrumbRow
+
+        Menu {
           ForEach(store.folderPath) { crumb in
-            Button {
+            Button(crumb.name) {
               Task { await store.jumpToPathItem(crumb) }
-            } label: {
-              Text(crumb.name)
-                .lineLimit(1)
             }
-            .buttonStyle(.bordered)
           }
+        } label: {
+          Label(folder.name, systemImage: "point.topleft.down.curvedto.point.bottomright.up")
         }
+      }
+    }
+  }
+
+  private var breadcrumbRow: some View {
+    HStack(spacing: 6) {
+      ForEach(store.folderPath) { crumb in
+        Button {
+          Task { await store.jumpToPathItem(crumb) }
+        } label: {
+          Text(crumb.name)
+            .lineLimit(1)
+        }
+        .buttonStyle(.bordered)
+      }
+    }
+  }
+
+  private func explorerActions(_ folder: FolderUsage) -> some View {
+    HStack(spacing: 8) {
+      Button {
+        Task { await store.goUp() }
+      } label: {
+        Label("Up", systemImage: "chevron.up")
+      }
+      .disabled(store.folderPath.count <= 1 || store.isScanningCurrentFolder)
+
+      Button {
+        Task { await store.scanCurrentFolder() }
+      } label: {
+        Label("Rescan", systemImage: "arrow.clockwise")
+      }
+      .disabled(store.isScanningCurrentFolder)
+
+      Button {
+        store.open(folder)
+      } label: {
+        Label("Open", systemImage: "folder")
+      }
+
+      Button {
+        store.reveal(folder)
+      } label: {
+        Label("Reveal", systemImage: "magnifyingglass")
       }
     }
   }

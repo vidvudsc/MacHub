@@ -65,16 +65,18 @@ struct FolderScanner {
     return results.sorted { $0.bytes > $1.bytes }
   }
 
-  func scanFolder(_ url: URL, limit: Int = 200) async -> FolderUsage {
-    let bytes = await sizeOf(url)
-    let children = await largestChildren(in: url, limit: limit)
+  func scanFolder(_ url: URL, limit: Int = 72) async -> FolderUsage {
+    async let bytes = sizeOf(url)
+    async let children = largestChildren(in: url, limit: limit)
+    let resolvedBytes = await bytes
+    let resolvedChildren = await children
     return FolderUsage(
       name: url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent,
       url: url,
-      bytes: bytes,
+      bytes: resolvedBytes,
       isDirectory: isDirectory(url),
-      itemCount: children.count,
-      children: children
+      itemCount: resolvedChildren.count,
+      children: resolvedChildren
     )
   }
 

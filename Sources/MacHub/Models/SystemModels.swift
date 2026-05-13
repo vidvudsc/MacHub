@@ -44,6 +44,7 @@ struct BatterySample: Identifiable, Equatable {
   var date = Date()
   var percent: Double
   var watts: Double?
+  var isCharging = false
 }
 
 struct PowerAppInfo: Equatable {

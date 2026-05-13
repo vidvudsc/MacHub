@@ -122,14 +122,20 @@ struct CardGrid<Content: View>: View {
 }
 
 struct UtilityPanel<Content: View>: View {
+  var minHeight: CGFloat?
   @ViewBuilder var content: Content
+
+  init(minHeight: CGFloat? = nil, @ViewBuilder content: () -> Content) {
+    self.minHeight = minHeight
+    self.content = content()
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       content
     }
     .padding(14)
-    .frame(maxWidth: .infinity, alignment: .topLeading)
+    .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
     .hubPanel()
   }
 }
@@ -198,31 +204,9 @@ struct UtilityListRow<Actions: View>: View {
   @ViewBuilder var actions: Actions
 
   var body: some View {
-    HStack(spacing: 12) {
-      Image(systemName: systemImage)
-        .font(.system(size: 16, weight: .semibold))
-        .foregroundStyle(.white)
-        .frame(width: 28, height: 28)
-        .background(tint.opacity(0.75), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-      VStack(alignment: .leading, spacing: 3) {
-        Text(title)
-          .font(.headline)
-          .lineLimit(1)
-        Text(detail)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
-      }
-
-      Spacer()
-
-      Text(value)
-        .font(.headline.monospacedDigit())
-        .foregroundStyle(.secondary)
-        .frame(minWidth: 96, alignment: .trailing)
-
-      actions
+    ViewThatFits(in: .horizontal) {
+      horizontalRow
+      compactRow
     }
     .padding(10)
     .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -232,6 +216,59 @@ struct UtilityListRow<Actions: View>: View {
         .frame(height: 1)
         .padding(.leading, 50)
     }
+  }
+
+  private var horizontalRow: some View {
+    HStack(spacing: 12) {
+      icon
+      titleBlock
+      Spacer()
+      valueText
+      actions
+    }
+  }
+
+  private var compactRow: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 12) {
+        icon
+        titleBlock
+        Spacer()
+        valueText
+      }
+
+      HStack {
+        Spacer()
+        actions
+      }
+    }
+  }
+
+  private var icon: some View {
+    Image(systemName: systemImage)
+      .font(.system(size: 16, weight: .semibold))
+      .foregroundStyle(.white)
+      .frame(width: 28, height: 28)
+      .background(tint.opacity(0.75), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+  }
+
+  private var titleBlock: some View {
+    VStack(alignment: .leading, spacing: 3) {
+      Text(title)
+        .font(.headline)
+        .lineLimit(1)
+      Text(detail)
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .lineLimit(2)
+    }
+  }
+
+  private var valueText: some View {
+    Text(value)
+      .font(.headline.monospacedDigit())
+      .foregroundStyle(.secondary)
+      .frame(minWidth: 72, alignment: .trailing)
   }
 }
 
@@ -376,11 +413,17 @@ struct Sparkline: View {
   var tint: Color = MacHubTheme.green
   var showsFill = false
   var fixedRange: ClosedRange<Double>?
+  var highlightRange: ClosedRange<Double>?
 
   var body: some View {
     GeometryReader { proxy in
       let points = normalizedPoints(in: proxy.size)
       ZStack(alignment: .bottomLeading) {
+        if let highlightRange {
+          chargingHighlight(for: highlightRange, size: proxy.size)
+            .fill(tint.opacity(0.24))
+        }
+
         if showsFill {
           fillPath(points: points, size: proxy.size)
             .fill(
@@ -396,6 +439,14 @@ struct Sparkline: View {
           .stroke(tint, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
       }
     }
+  }
+
+  private func chargingHighlight(for range: ClosedRange<Double>, size: CGSize) -> Path {
+    let lower = min(max(range.lowerBound, 0), 1)
+    let upper = min(max(range.upperBound, 0), 1)
+    let x = size.width * CGFloat(lower)
+    let width = max(size.width * CGFloat(upper - lower), 2)
+    return Path(CGRect(x: x, y: 0, width: width, height: size.height))
   }
 
   private func normalizedPoints(in size: CGSize) -> [CGPoint] {

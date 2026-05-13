@@ -36,12 +36,11 @@ struct MenuBarPanel: View {
           values: store.history.suffix(28).map(\.memoryPressure),
           fixedRange: 0...1
         )
-        MiniMetric(
+        BatteryMiniMetric(
           title: "Battery",
           value: store.snapshot.battery.isPresent ? Formatters.percent(store.snapshot.battery.percent) : "--",
           tint: MacHubTheme.green,
-          values: store.batteryHistory.suffix(360).map(\.percent),
-          fixedRange: 0...1
+          samples: menuBatterySamples
         )
         MiniMetric(
           title: "Disk",
@@ -60,7 +59,7 @@ struct MenuBarPanel: View {
             Text("Network")
           }
           .font(.callout)
-            .foregroundStyle(.secondary)
+          .foregroundStyle(.secondary)
           Spacer()
           Sparkline(
             values: store.history.suffix(28).map { Double($0.networkInPerSecond + $0.networkOutPerSecond) },
@@ -188,6 +187,7 @@ private struct MiniMetric: View {
   let tint: Color
   let values: [Double]
   var fixedRange: ClosedRange<Double>?
+  var highlightRange: ClosedRange<Double>?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -198,12 +198,141 @@ private struct MiniMetric: View {
         .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
         .lineLimit(1)
         .minimumScaleFactor(0.7)
-      Sparkline(values: values, tint: tint, fixedRange: fixedRange)
+      Sparkline(values: values, tint: tint, fixedRange: fixedRange, highlightRange: highlightRange)
         .frame(height: 24)
     }
     .padding(11)
     .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
     .hubPanel()
+  }
+}
+
+private struct BatteryMiniMetric: View {
+  let title: String
+  let value: String
+  let tint: Color
+  let samples: [BatterySample]
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(title)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Text(value)
+        .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+      BatteryMiniChart(samples: samples, tint: tint)
+        .frame(height: 24)
+    }
+    .padding(11)
+    .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+    .hubPanel()
+  }
+}
+
+private struct BatteryMiniChart: View {
+  let samples: [BatterySample]
+  let tint: Color
+  private let hoursToShow = 6
+
+  var body: some View {
+    GeometryReader { proxy in
+      let points = chartPoints(in: proxy.size)
+      ZStack(alignment: .leading) {
+        chargingHighlight(in: proxy.size)
+
+        Path { path in
+          guard !points.isEmpty else { return }
+          for index in points.indices {
+            let point = points[index]
+            if index == points.startIndex {
+              path.move(to: point)
+            } else {
+              path.addLine(to: point)
+            }
+          }
+        }
+        .stroke(tint, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+
+        if points.count == 1, let point = points.first {
+          Circle()
+            .fill(tint)
+            .frame(width: 4, height: 4)
+            .position(point)
+        }
+      }
+      .clipped()
+    }
+  }
+
+  private var startDate: Date {
+    endDate.addingTimeInterval(TimeInterval(-hoursToShow * 3_600))
+  }
+
+  private var endDate: Date {
+    Date()
+  }
+
+  private var visibleSamples: [BatterySample] {
+    samples.filter { $0.date >= startDate && $0.date <= endDate }
+  }
+
+  private func chartPoints(in size: CGSize) -> [CGPoint] {
+    visibleSamples.map { sample in
+      let x = xPosition(for: sample.date, width: size.width)
+      let y = size.height * CGFloat(1 - min(max(sample.percent, 0), 1))
+      return CGPoint(x: x, y: y)
+    }
+  }
+
+  private func chargingHighlight(in size: CGSize) -> some View {
+    Path { path in
+      for range in chargingRanges {
+        let x = xPosition(for: range.lowerBound, width: size.width)
+        let endX = xPosition(for: range.upperBound, width: size.width)
+        let highlightWidth = max(endX - x, 6)
+        path.addRect(CGRect(x: min(x, size.width - highlightWidth), y: 0, width: highlightWidth, height: size.height))
+      }
+    }
+    .fill(tint.opacity(0.24))
+  }
+
+  private var chargingRanges: [ClosedRange<Date>] {
+    let samples = visibleSamples
+    guard !samples.isEmpty else { return [] }
+    var ranges: [ClosedRange<Date>] = []
+    var activeStart: Date?
+
+    for sample in samples {
+      if sample.isCharging {
+        if activeStart == nil {
+          activeStart = sample.date
+        }
+      } else if let start = activeStart {
+        ranges.append(start...sample.date)
+        activeStart = nil
+      }
+    }
+
+    if let start = activeStart {
+      ranges.append(start...min(endDate, Date()))
+    }
+
+    return ranges
+  }
+
+  private func xPosition(for date: Date, width: CGFloat) -> CGFloat {
+    let total = endDate.timeIntervalSince(startDate)
+    guard total > 0 else { return 0 }
+    let elapsed = date.timeIntervalSince(startDate)
+    return min(max(CGFloat(elapsed / total) * width, 0), width)
+  }
+}
+
+private extension MenuBarPanel {
+  var menuBatterySamples: [BatterySample] {
+    Array(store.batteryHistory.suffix(360))
   }
 }
 

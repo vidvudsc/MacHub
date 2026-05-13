@@ -32,6 +32,7 @@ final class DashboardStore: ObservableObject {
   private static let batteryHistoryMaxSamples = 12 * 60
   private var isRefreshingMetrics = false
   private var isRefreshingBattery = false
+  private var folderScanGeneration = 0
   private var didStart = false
   private var didStartDashboardScans = false
 
@@ -262,6 +263,8 @@ final class DashboardStore: ObservableObject {
       return
     }
     folderPath.append(folder)
+    currentFolder = folder
+    selectedFolder = folder
     await scanFolder(folder.url, preservingPath: true)
   }
 
@@ -269,18 +272,25 @@ final class DashboardStore: ObservableObject {
     guard folderPath.count > 1 else { return }
     folderPath.removeLast()
     guard let parent = folderPath.last else { return }
+    currentFolder = parent
+    selectedFolder = parent
     await scanFolder(parent.url, preservingPath: false)
   }
 
   func jumpToPathItem(_ folder: FolderUsage) async {
     guard let index = folderPath.firstIndex(where: { $0.id == folder.id }) else { return }
     folderPath = Array(folderPath.prefix(index + 1))
+    currentFolder = folder
+    selectedFolder = folder
     await scanFolder(folder.url, preservingPath: false)
   }
 
   private func scanFolder(_ url: URL, preservingPath: Bool) async {
+    folderScanGeneration += 1
+    let scanID = folderScanGeneration
     isScanningCurrentFolder = true
     let folder = await scanner.scanFolder(url)
+    guard scanID == folderScanGeneration else { return }
     currentFolder = folder
     selectedFolder = folder
     if preservingPath, !folderPath.isEmpty {
@@ -310,17 +320,28 @@ final class DashboardStore: ObservableObject {
     guard battery.isPresent else { return }
     let now = Date()
     if let last = batteryHistory.last, now.timeIntervalSince(last.date) < Self.batteryHistorySampleInterval {
-      guard abs(last.percent - battery.percent) >= 0.001 else { return }
-      batteryHistory[batteryHistory.count - 1] = BatterySample(
-        date: last.date,
-        percent: battery.percent,
-        watts: battery.watts
-      )
+      if last.isCharging != battery.isCharging {
+        batteryHistory.append(BatterySample(
+          date: now,
+          percent: battery.percent,
+          watts: battery.watts,
+          isCharging: battery.isCharging
+        ))
+      } else {
+        guard abs(last.percent - battery.percent) >= 0.001 else { return }
+        batteryHistory[batteryHistory.count - 1] = BatterySample(
+          date: last.date,
+          percent: battery.percent,
+          watts: battery.watts,
+          isCharging: battery.isCharging
+        )
+      }
     } else {
       batteryHistory.append(BatterySample(
         date: now,
         percent: battery.percent,
-        watts: battery.watts
+        watts: battery.watts,
+        isCharging: battery.isCharging
       ))
     }
 

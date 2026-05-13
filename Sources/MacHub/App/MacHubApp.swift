@@ -75,10 +75,12 @@ struct MacHubApp: App {
         }
         .keyboardShortcut("r", modifiers: [.command])
 
-        Button("Open Full Disk Access") {
-          PrivacySettingsService.openFullDiskAccess()
+        if !store.hasFullDiskAccess {
+          Button("Open Full Disk Access") {
+            PrivacySettingsService.openFullDiskAccess()
+          }
+          .keyboardShortcut(",", modifiers: [.command, .shift])
         }
-        .keyboardShortcut(",", modifiers: [.command, .shift])
       }
       CommandMenu("Window Tools") {
         Button("Left Half") {

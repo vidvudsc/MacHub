@@ -24,6 +24,7 @@ if [[ -n "${SIGN_IDENTITY+x}" ]]; then
 fi
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 ALLOW_ADHOC_FALLBACK="${ALLOW_ADHOC_FALLBACK:-0}"
+SIGN_TIMEOUT_SECONDS="${SIGN_TIMEOUT_SECONDS:-120}"
 
 if [[ -z "$SIGN_IDENTITY" ]]; then
   SIGN_IDENTITY="$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null | /usr/bin/awk -F '"' '/Apple Development:/ { print $2; exit }')"
@@ -98,7 +99,7 @@ sign_app() {
 
   /usr/bin/codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$APP_BUNDLE" &
   local sign_pid=$!
-  for _ in {1..30}; do
+  for ((elapsed = 0; elapsed < SIGN_TIMEOUT_SECONDS; elapsed++)); do
     if ! /bin/kill -0 "$sign_pid" >/dev/null 2>&1; then
       wait "$sign_pid"
       return

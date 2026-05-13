@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BatteryView: View {
   @ObservedObject var store: DashboardStore
+  private let panelHeight: CGFloat = 460
 
   private var battery: BatteryInfo {
     store.snapshot.battery
@@ -11,9 +12,9 @@ struct BatteryView: View {
     ViewThatFits(in: .horizontal) {
       HStack(alignment: .top, spacing: 12) {
         factsPanel
-          .frame(width: 280)
+          .frame(minWidth: 280, idealWidth: 340, maxWidth: 380)
         trendPanel
-          .frame(maxWidth: 520)
+          .frame(minWidth: 520, maxWidth: .infinity)
       }
 
       VStack(alignment: .leading, spacing: 12) {
@@ -21,17 +22,17 @@ struct BatteryView: View {
         trendPanel
       }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .frame(maxWidth: .infinity, alignment: .topLeading)
   }
 
   private var factsPanel: some View {
-    UtilityPanel {
+    UtilityPanel(minHeight: panelHeight) {
       BatteryFactsCard(battery: battery)
     }
   }
 
   private var trendPanel: some View {
-    UtilityPanel {
+    UtilityPanel(minHeight: panelHeight) {
       BatteryTrendCard(store: store)
     }
   }
@@ -110,10 +111,10 @@ private struct BatteryTrendCard: View {
       return battery.isPluggedIn ? "Connected to charger; battery flow is still measuring." : "Running on battery; watt draw is still measuring."
     }
     if watts > 0.1 {
-      return battery.isCharging ? "Watts are flowing into the battery from the charger." : "Adapter power is connected and battery flow is positive."
+      return battery.isPluggedIn ? "The charger is powering the Mac while the battery reports outgoing flow." : "Watts are flowing out of the battery."
     }
     if watts < -0.1 {
-      return battery.isPluggedIn ? "The Mac is using charger power and supplementing from the battery." : "Watts are flowing out of the battery."
+      return battery.isPluggedIn ? "The charger is powering the Mac and charging the battery." : "Battery flow is negative while unplugged."
     }
     return battery.isPluggedIn ? "Connected to charger with the battery mostly idle." : "Battery flow is near idle."
   }
@@ -205,7 +206,7 @@ private struct PowerPill: View {
 
 private struct BatteryLineChart: View {
   let samples: [BatterySample]
-  private let hoursToShow = 12
+  private let hoursToShow = 6
 
   var body: some View {
     VStack(spacing: 6) {
@@ -213,9 +214,10 @@ private struct BatteryLineChart: View {
         GeometryReader { proxy in
           ZStack(alignment: .leading) {
             grid(width: proxy.size.width)
+            chargingHighlight(in: proxy.size)
+            let points = chartPoints(in: proxy.size)
 
             Path { path in
-              let points = chartPoints(in: proxy.size)
               guard !points.isEmpty else { return }
               for index in points.indices {
                 let point = points[index]
@@ -227,6 +229,13 @@ private struct BatteryLineChart: View {
               }
             }
             .stroke(.green, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+
+            if points.count == 1, let point = points.first {
+              Circle()
+                .fill(.green)
+                .frame(width: 6, height: 6)
+                .position(point)
+            }
           }
           .clipped()
         }
@@ -267,13 +276,52 @@ private struct BatteryLineChart: View {
   }
 
   private func chartPoints(in size: CGSize) -> [CGPoint] {
-    samples
-      .filter { $0.date >= startDate && $0.date <= endDate }
+    visibleSamples
       .map { sample in
         let x = xPosition(for: sample.date, width: size.width)
         let y = size.height * CGFloat(1 - min(max(sample.percent, 0), 1))
         return CGPoint(x: x, y: y)
       }
+  }
+
+  private var visibleSamples: [BatterySample] {
+    samples.filter { $0.date >= startDate && $0.date <= endDate }
+  }
+
+  private func chargingHighlight(in size: CGSize) -> some View {
+    Path { path in
+      for range in chargingRanges {
+        let x = xPosition(for: range.lowerBound, width: size.width)
+        let endX = xPosition(for: range.upperBound, width: size.width)
+        let highlightWidth = max(endX - x, 8)
+        path.addRect(CGRect(x: min(x, size.width - highlightWidth), y: 0, width: highlightWidth, height: size.height))
+      }
+    }
+    .fill(MacHubTheme.green.opacity(0.22))
+  }
+
+  private var chargingRanges: [ClosedRange<Date>] {
+    let samples = visibleSamples
+    guard !samples.isEmpty else { return [] }
+    var ranges: [ClosedRange<Date>] = []
+    var activeStart: Date?
+
+    for sample in samples {
+      if sample.isCharging {
+        if activeStart == nil {
+          activeStart = sample.date
+        }
+      } else if let start = activeStart {
+        ranges.append(start...sample.date)
+        activeStart = nil
+      }
+    }
+
+    if let start = activeStart {
+      ranges.append(start...min(endDate, Date()))
+    }
+
+    return ranges
   }
 
   private func grid(width: CGFloat) -> some View {
@@ -313,7 +361,7 @@ private struct BatteryLineChart: View {
   private func hourTicks() -> [Date] {
     let calendar = Calendar.current
     let currentHour = calendar.dateInterval(of: .hour, for: endDate)?.start ?? endDate
-    return stride(from: hoursToShow, through: 0, by: -3).compactMap {
+    return stride(from: hoursToShow, through: 0, by: -2).compactMap {
       calendar.date(byAdding: .hour, value: -$0, to: currentHour)
     }
   }

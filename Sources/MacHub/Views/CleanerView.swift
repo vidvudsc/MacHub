@@ -31,25 +31,27 @@ struct CleanerView: View {
           }
           .disabled(!store.hasFullDiskAccess)
 
-          Divider()
-            .frame(height: 52)
+          if !store.hasFullDiskAccess {
+            Divider()
+              .frame(height: 52)
 
-          VStack(alignment: .leading, spacing: 5) {
-            Text("Full Disk Access")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-            Text(store.hasFullDiskAccess ? "Enabled" : "Needed")
-              .font(.headline)
-              .foregroundStyle(store.hasFullDiskAccess ? MacHubTheme.green : MacHubTheme.yellow)
-            Text(store.hasFullDiskAccess ? "Ready to scan protected folders" : "Required before protected scans")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
+            VStack(alignment: .leading, spacing: 5) {
+              Text("Full Disk Access")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              Text("Needed")
+                .font(.headline)
+                .foregroundStyle(MacHubTheme.yellow)
+              Text("Required before protected scans")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
 
-          Button {
-            PrivacySettingsService.openFullDiskAccess()
-          } label: {
-            Label("Open Settings", systemImage: "checkmark.circle")
+            Button {
+              PrivacySettingsService.openFullDiskAccess()
+            } label: {
+              Label("Open Settings", systemImage: "checkmark.circle")
+            }
           }
         }
       }

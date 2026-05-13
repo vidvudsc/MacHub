@@ -96,13 +96,15 @@ struct WindowToolsView: View {
         detail: "Resize the frontmost app window with global shortcuts or one click."
       )
       Divider()
-      CompactMetricRow(title: "Accessibility", value: WindowManagerService.isAccessibilityTrusted ? "Enabled" : "Needed", systemImage: "hand.raised")
       CompactMetricRow(title: "Hotkeys", value: "\(HotKeyManager.shared.registeredHotKeyCount)/\(WindowLayout.allCases.count)", systemImage: "keyboard")
-      Button {
-        WindowManagerService.requestAccessibilityPermission()
-        WindowManagerService.openAccessibilitySettings()
-      } label: {
-        Label("Accessibility Permission", systemImage: "hand.raised")
+      if !WindowManagerService.isAccessibilityTrusted {
+        CompactMetricRow(title: "Accessibility", value: "Needed", systemImage: "hand.raised")
+        Button {
+          WindowManagerService.requestAccessibilityPermission()
+          WindowManagerService.openAccessibilitySettings()
+        } label: {
+          Label("Accessibility Permission", systemImage: "hand.raised")
+        }
       }
     }
   }
